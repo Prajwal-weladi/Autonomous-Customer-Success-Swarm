@@ -1,0 +1,122 @@
+#######################################
+# General
+#######################################
+.DS_Store
+Thumbs.db
+*.log
+*.pid
+
+#######################################
+# Environment variables / secrets
+#######################################
+.env
+.env.*
+!.env.example
+
+#######################################
+# Python
+#######################################
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage/
+htmlcov/
+
+#######################################
+# Virtual Environments
+#######################################
+venv/
+.venv/
+env/
+ENV/
+
+#######################################
+# Streamlit
+#######################################
+.streamlit/secrets.toml
+.streamlit/config.toml
+
+#######################################
+# Node / React (future-proof)
+#######################################
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-lock.yaml
+
+#######################################
+# Frontend build output
+#######################################
+frontend/dist/
+frontend/build/
+frontend/.next/
+frontend/.cache/
+
+#######################################
+# Backend runtime artifacts
+#######################################
+backend/.pytest_cache/
+backend/app/storage/__pycache__/
+
+#######################################
+# Database
+#######################################
+*.sqlite
+*.db
+*.dump
+*.sql.bak
+
+#######################################
+# Redis / Cache
+#######################################
+dump.rdb
+
+#######################################
+# Docker
+#######################################
+*.pid
+docker-compose.override.yml
+
+#######################################
+# Kubernetes / Infra secrets
+#######################################
+infra/**/secrets.yaml
+infra/**/secret.yaml
+infra/**/.env
+
+#######################################
+# IDEs & Editors
+#######################################
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+
+#######################################
+# OS / Temp files
+#######################################
+*.tmp
+*.temp
+*.bak
+
+#######################################
+# CI artifacts
+#######################################
+reports/
+artifacts/
+
+#######################################
+# Logs
+#######################################
+logs/
