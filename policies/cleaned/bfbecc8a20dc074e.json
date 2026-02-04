@@ -1,0 +1,11 @@
+{
+  "policy_id": "bfbecc8a20dc074e",
+  "policy_domain": "returns",
+  "title": "Return Policy - Flipkart.com",
+  "source_url": "https://www.flipkart.com/pages/returnpolicy",
+  "scrape_timestamp": "2026-02-04T06:43:40.058676",
+  "metadata": {
+    "status_code": 200,
+    "content_length": 243449
+  }
+}
