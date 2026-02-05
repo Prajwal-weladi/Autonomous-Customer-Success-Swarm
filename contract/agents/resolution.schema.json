@@ -1,0 +1,13 @@
+{
+  "title": "ResolutionAgent",
+  "type": "object",
+  "properties": {
+    "action_taken": {
+      "type": "string",
+      "enum": ["refund_issued", "exchange_created", "none"]
+    },
+    "amount": { "type": ["number", "null"] },
+    "message": { "type": "string" }
+  },
+  "required": ["action_taken", "message"]
+}

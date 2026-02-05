@@ -1,0 +1,19 @@
+{
+  "title": "DatabaseAgent",
+  "type": "object",
+  "properties": {
+    "orders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "order_id": { "type": "string" },
+          "status": { "type": "string" },
+          "delivered_on": { "type": ["string", "null"] }
+        },
+        "required": ["order_id", "status"]
+      }
+    }
+  },
+  "required": ["orders"]
+}
