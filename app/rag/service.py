@@ -8,7 +8,7 @@ from app.core.config import settings
 from app.core.logger import setup_logger
 from app.core.models import QueryRequest, QueryResponse
 from app.rag.embedding import EmbeddingGenerator, FAISSVectorStore
-from app.rag.llm import OllamaClient
+from app.rag.llm import OllamaClient, create_reranking_client
 from app.rag.pipeline import AdvancedRAGPipeline
 from app.rag.document_processor import DocumentProcessor
 from scripts.scrapper import FlipkartPolicyScraper
@@ -26,6 +26,7 @@ class RAGService:
         self.embedding_generator: Optional[EmbeddingGenerator] = None
         self.vector_store: Optional[FAISSVectorStore] = None
         self.llm_client: Optional[OllamaClient] = None
+        self.reranking_client: Optional[OllamaClient] = None
         self.pipeline: Optional[AdvancedRAGPipeline] = None
         self._initialized = False
         
@@ -59,6 +60,9 @@ class RAGService:
             # Initialize LLM client
             self.llm_client = OllamaClient()
             
+            # Initialize separate reranking client with llama3.2
+            self.reranking_client = create_reranking_client()
+            
             # Check Ollama connection
             if not self.llm_client.check_connection():
                 raise RuntimeError("Cannot connect to Ollama. Please ensure Ollama is running.")
@@ -73,10 +77,11 @@ class RAGService:
                 logger.warning("No existing index found or force reload requested")
                 logger.info("Run reindexing to build the index")
             
-            # Initialize pipeline
+            # Initialize pipeline with both clients
             self.pipeline = AdvancedRAGPipeline(
                 vector_store=self.vector_store,
-                llm_client=self.llm_client
+                llm_client=self.llm_client,
+                reranking_client=self.reranking_client
             )
             
             self._initialized = True
@@ -161,9 +166,13 @@ class RAGService:
             if self.llm_client is None:
                 self.llm_client = OllamaClient()
             
+            if self.reranking_client is None:
+                self.reranking_client = create_reranking_client()
+            
             self.pipeline = AdvancedRAGPipeline(
                 vector_store=self.vector_store,
-                llm_client=self.llm_client
+                llm_client=self.llm_client,
+                reranking_client=self.reranking_client
             )
             
             elapsed = time.time() - start_time

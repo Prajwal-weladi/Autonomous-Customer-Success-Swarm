@@ -22,7 +22,8 @@ class Settings(BaseSettings):
     
     # Ollama settings
     OLLAMA_BASE_URL: str = Field(default="http://localhost:11434", env="OLLAMA_BASE_URL")
-    GENERATION_MODEL: str = Field(default="llama3.2", env="GENERATION_MODEL")
+    GENERATION_MODEL: str = Field(default="qwen2.5:0.5b", env="GENERATION_MODEL")
+    RERANKING_MODEL: str = Field(default="llama3.2", env="RERANKING_MODEL")
     EMBEDDING_MODEL: str = Field(default="mxbai-embed-large", env="EMBEDDING_MODEL")
     
     # RAG parameters
@@ -34,7 +35,9 @@ class Settings(BaseSettings):
     
     # Generation parameters
     GENERATION_TEMPERATURE: float = Field(default=0.1, env="GENERATION_TEMPERATURE")
+    RERANKING_TEMPERATURE: float = Field(default=0.1, env="RERANKING_TEMPERATURE")
     GENERATION_MAX_TOKENS: int = Field(default=512, env="GENERATION_MAX_TOKENS")
+    RERANKING_MAX_TOKENS: int = Field(default=10, env="RERANKING_MAX_TOKENS")
     
     # API settings
     API_HOST: str = Field(default="0.0.0.0", env="API_HOST")

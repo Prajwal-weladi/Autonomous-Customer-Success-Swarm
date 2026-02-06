@@ -122,6 +122,7 @@ class OllamaClient:
 
 # Factory function for creating clients
 def create_llm_client(
+    model: Optional[str] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None
 ) -> OllamaClient:
@@ -129,6 +130,7 @@ def create_llm_client(
     Factory function to create LLM client.
     
     Args:
+        model: Optional model name override
         temperature: Optional temperature override
         max_tokens: Optional max tokens override
     
@@ -136,9 +138,26 @@ def create_llm_client(
         OllamaClient instance
     """
     kwargs = {}
+    if model is not None:
+        kwargs['model'] = model
     if temperature is not None:
         kwargs['temperature'] = temperature
     if max_tokens is not None:
         kwargs['max_tokens'] = max_tokens
     
     return OllamaClient(**kwargs)
+
+
+def create_reranking_client() -> OllamaClient:
+    """
+    Factory function to create LLM client specifically for re-ranking.
+    Uses the configured RERANKING_MODEL (default: llama3.2).
+    
+    Returns:
+        OllamaClient instance configured for re-ranking
+    """
+    return OllamaClient(
+        model=settings.RERANKING_MODEL,
+        temperature=settings.RERANKING_TEMPERATURE,
+        max_tokens=settings.RERANKING_MAX_TOKENS
+    )

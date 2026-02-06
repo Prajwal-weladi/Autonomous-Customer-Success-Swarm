@@ -28,12 +28,17 @@ class AdvancedRAGPipeline:
     def __init__(
         self,
         vector_store: FAISSVectorStore,
-        llm_client: OllamaClient
+        llm_client: OllamaClient,
+        reranking_client: Optional[OllamaClient] = None
     ):
         self.vector_store = vector_store
         self.llm_client = llm_client
+        self.reranking_client = reranking_client or llm_client  # Use separate client or fallback to main
         
-        logger.info("Initialized AdvancedRAGPipeline")
+        logger.info(
+            f"Initialized AdvancedRAGPipeline with generation model '{llm_client.model}' "
+            f"and reranking model '{self.reranking_client.model}'"
+        )
     
     def translate_query(
         self,
@@ -147,7 +152,7 @@ class AdvancedRAGPipeline:
         Returns:
             List of RetrievedContext objects
         """
-        logger.debug(f"Retrieving top-{k} contexts")
+        logger.info(f"Retrieving top-{k} contexts (filter_domain={filter_domain})")
         
         # Search vector store
         results = self.vector_store.search(
@@ -155,6 +160,19 @@ class AdvancedRAGPipeline:
             k=k,
             filter_domain=filter_domain
         )
+        
+        if not results:
+            logger.warning(f"No results from vector store search")
+            # Try without filter if filter was used
+            if filter_domain:
+                logger.info(f"Retrying search without domain filter...")
+                results = self.vector_store.search(
+                    query=query,
+                    k=k,
+                    filter_domain=None
+                )
+                if results:
+                    logger.info(f"Found {len(results)} results without filter")
         
         # Convert to RetrievedContext objects
         contexts = []
@@ -194,6 +212,7 @@ class AdvancedRAGPipeline:
             return contexts
         
         scored_contexts = []
+        reranking_failed = False
         
         for context in contexts:
             try:
@@ -203,22 +222,30 @@ class AdvancedRAGPipeline:
                     chunk_content=context.content
                 )
                 
-                # Generate score
-                score_text = self.llm_client.generate(
+                # Generate score using dedicated reranking client
+                score_text = self.reranking_client.generate(
                     prompt=prompt,
-                    temperature=0.1,
-                    max_tokens=10
+                    temperature=settings.RERANKING_TEMPERATURE,
+                    max_tokens=settings.RERANKING_MAX_TOKENS
                 )
                 
                 # Parse score
                 try:
-                    score = float(score_text.strip())
+                    # Clean the response
+                    score_text = score_text.strip().split()[0]  # Take first token
+                    score = float(score_text)
                     score = max(0.0, min(1.0, score))  # Clamp to [0, 1]
-                except ValueError:
-                    logger.warning(
-                        f"Failed to parse relevance score: '{score_text}'"
-                    )
+                    
+                    # If score is 0, use original FAISS score instead
+                    if score == 0.0 and context.relevance_score > 0:
+                        logger.debug(f"Re-ranking returned 0.0, using FAISS score: {context.relevance_score}")
+                        score = context.relevance_score
+                        reranking_failed = True
+                    
+                except (ValueError, IndexError) as e:
+                    logger.warning(f"Failed to parse relevance score from '{score_text}': {e}")
                     score = context.relevance_score  # Use original score
+                    reranking_failed = True
                 
                 # Update relevance score
                 context.relevance_score = score
@@ -228,9 +255,16 @@ class AdvancedRAGPipeline:
                 logger.error(f"Re-ranking failed for context: {str(e)}")
                 # Keep original score
                 scored_contexts.append(context)
+                reranking_failed = True
         
-        # Sort by relevance score (descending)
-        scored_contexts.sort(key=lambda x: x.relevance_score, reverse=True)
+        # If re-ranking consistently failed, just use original FAISS scores
+        if reranking_failed:
+            logger.warning("Re-ranking appears to be failing, using FAISS scores instead")
+            # Sort by original FAISS scores
+            scored_contexts.sort(key=lambda x: x.relevance_score, reverse=True)
+        else:
+            # Sort by re-ranked scores (descending)
+            scored_contexts.sort(key=lambda x: x.relevance_score, reverse=True)
         
         # Return top-k
         top_contexts = scored_contexts[:top_k]
@@ -297,7 +331,7 @@ class AdvancedRAGPipeline:
         filter_domain: Optional[str] = None,
         use_query_translation: bool = True,
         use_query_routing: bool = True,
-        use_reranking: bool = True
+        use_reranking: bool = False  # Disabled by default for small models
     ) -> str:
         """
         Execute full RAG pipeline.
