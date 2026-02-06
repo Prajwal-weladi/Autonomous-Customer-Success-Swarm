@@ -15,6 +15,7 @@ class MessageResponse(BaseModel):
     intent: str | None = None
     urgency: str | None = None
     order_id: str | None = None
+    user_issue: str | None = None
     triage_confidence: float | None = None
     triage_summary: str | None = None
 
@@ -32,6 +33,7 @@ async def handle_message(req: MessageRequest):
         "intent": state.get("intent"),
         "urgency": state.get("urgency"),
         "order_id": state.get("entities", {}).get("order_id"),
+        "user_issue": state.get("entities", {}).get("user_issue"),
         "triage_confidence": state.get("entities", {}).get("triage_confidence"),
         "triage_summary": state.get("entities", {}).get("triage_summary"),
     }

@@ -44,16 +44,7 @@ def rule_based_urgency(text: str) -> str | None:
 def run_triage(message: str) -> dict:
     text = message.lower()
     order_id = extract_order_id(text)
-    intent = rule_based_intent(text)
     urgency = rule_based_urgency(text)
-
-    if intent:
-        return {
-            "intent": intent,
-            "urgency": urgency or "normal",
-            "order_id": order_id,
-            "confidence": 0.85,
-        }
 
     if ollama is None:
         return {
@@ -78,6 +69,9 @@ def run_triage(message: str) -> dict:
             result["urgency"] = urgency or "normal"
         if not result.get("confidence"):
             result["confidence"] = 0.50
+        # Ensure user_issue is always present
+        if not result.get("user_issue"):
+            result["user_issue"] = message
         return result
     except (ValueError, TypeError):
         return {
@@ -85,6 +79,7 @@ def run_triage(message: str) -> dict:
             "urgency": urgency or "normal",
             "order_id": order_id,
             "confidence": 0.50,
+            "user_issue": message,
         }
 
 
@@ -102,14 +97,24 @@ async def triage_agent(state):
         state["entities"]["order_id"] = result["order_id"]
     if "confidence" in result:
         state["entities"]["triage_confidence"] = result["confidence"]
+    # Always store user_issue
+    state["entities"]["user_issue"] = result.get("user_issue", message)
 
     # Create comprehensive triage summary query for downstream agents
     triage_summary = f"""Triage Analysis Summary:
 - Original Query: {message}
+- User Issue: {result.get("user_issue", message)}
 - Detected Intent: {result.get("intent")}
 - Urgency Level: {result.get("urgency", "normal")}
 - Order ID: {result.get("order_id") or "Not found"}
-- Confidence Score: {result.get("confidence", 0.50)}"""
+- Confidence Score: {result.get("confidence", 0.50)}
+- Full Response: intent={{intent}}, urgency={{urgency}}, order_id={{order_id}}, confidence={{confidence}}, user_issue={{user_issue}}""".format(
+        intent=result.get("intent"),
+        urgency=result.get("urgency", "normal"),
+        order_id=result.get("order_id") or "null",
+        confidence=result.get("confidence", 0.50),
+        user_issue=result.get("user_issue", message)
+    )
     
     state["entities"]["triage_summary"] = triage_summary
 

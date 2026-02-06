@@ -30,5 +30,7 @@ Return ONLY valid JSON in this format:
   "user_issue": "..."
 }}
 
+Important: For user_issue field, analyze the sentiment and core problem in the user's message. Extract what specific issue or complaint the user is facing in 1-2 clear, concise sentences.
+
 User message: {message}
 """
