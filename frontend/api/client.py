@@ -9,6 +9,6 @@ def send_message(conversation_id: str, message: str) -> dict:
         "message": message
     }
 
-    response = requests.post(BACKEND_URL, json=payload, timeout=15)
+    response = requests.post(BACKEND_URL, json=payload, timeout=60)
     response.raise_for_status()
     return response.json()
