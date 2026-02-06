@@ -97,10 +97,21 @@ async def triage_agent(state):
     state["urgency"] = result.get("urgency")
 
     state.setdefault("entities", {})
+    state["entities"]["query"] = message
     if result.get("order_id"):
         state["entities"]["order_id"] = result["order_id"]
     if "confidence" in result:
         state["entities"]["triage_confidence"] = result["confidence"]
+
+    # Create comprehensive triage summary query for downstream agents
+    triage_summary = f"""Triage Analysis Summary:
+- Original Query: {message}
+- Detected Intent: {result.get("intent")}
+- Urgency Level: {result.get("urgency", "normal")}
+- Order ID: {result.get("order_id") or "Not found"}
+- Confidence Score: {result.get("confidence", 0.50)}"""
+    
+    state["entities"]["triage_summary"] = triage_summary
 
     state["current_state"] = "DATA_FETCH"
     return state

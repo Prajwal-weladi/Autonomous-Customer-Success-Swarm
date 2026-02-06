@@ -16,6 +16,7 @@ class MessageResponse(BaseModel):
     urgency: str | None = None
     order_id: str | None = None
     triage_confidence: float | None = None
+    triage_summary: str | None = None
 
 @router.post("/v1/message", response_model=MessageResponse)
 async def handle_message(req: MessageRequest):
@@ -32,4 +33,5 @@ async def handle_message(req: MessageRequest):
         "urgency": state.get("urgency"),
         "order_id": state.get("entities", {}).get("order_id"),
         "triage_confidence": state.get("entities", {}).get("triage_confidence"),
+        "triage_summary": state.get("entities", {}).get("triage_summary"),
     }
