@@ -4,3 +4,9 @@ langgraph
 pydantic
 python-dotenv
 ollama
+sqlalchemy
+psycopg2-binary
+langchain
+pytest
+pytest-asyncio
+httpx
