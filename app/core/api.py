@@ -1,6 +1,7 @@
 """
 FastAPI application for the Policy RAG Agent.
 """
+
 from contextlib import asynccontextmanager
 from typing import Dict, Any
 
@@ -30,6 +31,7 @@ logger = setup_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown."""
     # Startup
     logger.info("Starting Policy RAG Agent API...")
     try:
@@ -46,7 +48,12 @@ async def lifespan(app: FastAPI):
 
 
 # Create FastAPI app
-app = FastAPI()
+app = FastAPI(
+    title="Policy RAG Agent API",
+    description="Advanced RAG pipeline for policy-based text generation",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
 # Add CORS middleware
 app.add_middleware(
@@ -68,8 +75,14 @@ async def root() -> Dict[str, str]:
     }
 
 
-@app.get("/policy/health", response_model=HealthResponse)
+@app.get("/policy/health", response_model=HealthResponse, tags=["Health"])
 async def health_check() -> HealthResponse:
+    """
+    Check health status of the RAG service.
+    
+    Returns:
+        Health status information
+    """
     try:
         health = rag_service.get_health()
         return HealthResponse(**health)
@@ -81,8 +94,20 @@ async def health_check() -> HealthResponse:
         )
 
 
-@app.post("/policy/query", response_model=QueryResponse)
+@app.post("/policy/query", response_model=QueryResponse, tags=["Query"])
 async def query_policy(request: QueryRequest) -> QueryResponse:
+    """
+    Query the policy knowledge base.
+    
+    Args:
+        request: Query request with query text and optional conversation history
+    
+    Returns:
+        Generated answer based on policy documents
+    
+    Raises:
+        HTTPException: If query processing fails
+    """
     try:
         logger.info(f"Received query: '{request.query}'")
         
@@ -109,8 +134,51 @@ async def query_policy(request: QueryRequest) -> QueryResponse:
         )
 
 
-@app.post("/policy/evaluate", response_model=PolicyQueryResponse)
+@app.post("/policy/evaluate", response_model=PolicyQueryResponse, tags=["Query"])
 async def evaluate_policy_with_order(request: PolicyQueryRequest) -> PolicyQueryResponse:
+    """
+    Evaluate policy compliance with order context (NEW ENDPOINT).
+    
+    This endpoint accepts order details and returns structured evaluation
+    of whether exchange/cancellation is allowed based on policy rules
+    and order dates.
+    
+    Args:
+        request: Query with order details (order_id, product, dates, status)
+    
+    Returns:
+        Structured response with:
+        - policy: Relevant policy text
+        - exchange_allowed: Boolean
+        - cancel_allowed: Boolean
+        - reason: Detailed explanation
+    
+    Raises:
+        HTTPException: If evaluation fails
+    
+    Example:
+        POST /policy/evaluate
+        {
+            "query": "Can I exchange this item?",
+            "order_details": {
+                "order_id": 7847,
+                "product": "Puma Jacket",
+                "size": 40,
+                "order_date": "2026-01-20",
+                "delivered_date": "2026-01-25",
+                "status": "Delivered"
+            },
+            "conversation_history": []
+        }
+        
+        Response:
+        {
+            "policy": "Exchanges allowed within 7 days of delivery...",
+            "exchange_allowed": false,
+            "cancel_allowed": false,
+            "reason": "Item delivered 15 days ago. Exchange period expired."
+        }
+    """
     try:
         logger.info(
             f"Received policy evaluation request for order {request.order_details.order_id}"
@@ -152,8 +220,20 @@ async def evaluate_policy_with_order(request: PolicyQueryRequest) -> PolicyQuery
         )
 
 
-@app.post("/policy/reindex", response_model=ReindexResponse)
+@app.post("/policy/reindex", response_model=ReindexResponse, tags=["Management"])
 async def reindex_policies(request: ReindexRequest) -> ReindexResponse:
+    """
+    Rebuild the policy document index.
+    
+    Args:
+        request: Reindex request with optional force rescrape flag
+    
+    Returns:
+        Reindexing statistics
+    
+    Raises:
+        HTTPException: If reindexing fails
+    """
     try:
         logger.info(f"Reindexing requested (force_rescrape={request.force_rescrape})")
         
@@ -171,8 +251,14 @@ async def reindex_policies(request: ReindexRequest) -> ReindexResponse:
         )
 
 
-@app.get("/policy/statistics")
+@app.get("/policy/statistics", tags=["Management"])
 async def get_statistics() -> Dict[str, Any]:
+    """
+    Get detailed statistics about the RAG system.
+    
+    Returns:
+        Statistics dictionary
+    """
     try:
         stats = rag_service.get_statistics()
         return stats
