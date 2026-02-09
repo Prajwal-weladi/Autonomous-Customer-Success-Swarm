@@ -2,11 +2,17 @@ fastapi
 uvicorn
 langgraph
 pydantic
+pydantic-settings
 python-dotenv
 ollama
 sqlalchemy
 psycopg2-binary
 langchain
+langchain-community
 pytest
 pytest-asyncio
 httpx
+faiss-cpu
+numpy
+requests
+python-multipart
