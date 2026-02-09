@@ -5,7 +5,7 @@ Run this after creating tables.
 
 from datetime import date
 from app.agents.database.tools.db_connection import get_db_session
-from app.schemas.db_models import Orders
+from app.agents.database.schemas.db_models import Orders
 
 
 def seed_data():
