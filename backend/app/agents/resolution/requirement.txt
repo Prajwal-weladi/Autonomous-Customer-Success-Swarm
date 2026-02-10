@@ -1,0 +1,24 @@
+# FastAPI & Server
+fastapi
+uvicorn[standard]
+
+# Data validation
+pydantic
+
+# LLM (Ollama)
+ollama
+
+# PDF generation
+fpdf
+
+# Environment variables (optional but recommended)
+python-dotenv
+
+# HTTP requests (future integrations)
+requests
+
+# Async utilities (FastAPI dependency)
+anyio
+
+# Logging & reload stability
+watchfiles
