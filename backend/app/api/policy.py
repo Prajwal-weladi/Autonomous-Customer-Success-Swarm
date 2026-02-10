@@ -98,10 +98,17 @@ async def evaluate_policy_with_order(request: PolicyQueryRequest) -> PolicyQuery
                 detail="RAG service not initialized. Please check service health."
             )
         
-        # Evaluate policy with order context
+        # Create state structure similar to orchestrator state
+        state = {
+            "entities": {
+                "order_details": request.order_details
+            }
+        }
+        
+        # Evaluate policy with order context - passing state instead of order_details
         evaluation = enhanced_policy_service.query_with_order_context(
             query=request.query,
-            order_details=request.order_details,
+            state=state,
             conversation_history=request.conversation_history
         )
         

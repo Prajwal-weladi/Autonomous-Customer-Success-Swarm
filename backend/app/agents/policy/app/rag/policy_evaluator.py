@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 import re
 
 from ..core.logger import setup_logger
-from ..core.models import OrderDetails, PolicyEvaluationOutput
+from ..core.models import PolicyEvaluationOutput, OrderDetails
 from ..rag.service import rag_service
 from ..core.models import QueryRequest
 
@@ -173,21 +173,32 @@ class PolicyEvaluator:
     def evaluate_policy(
         self,
         query: str,
-        order_details: OrderDetails,
-        policy_text: str
+        order_details,
+        policy_text: str,
+        state
     ) -> PolicyEvaluationOutput:
         """
-        Evaluate policy compliance based on order details.
+        Evaluate policy compliance based on order details from state.
         
         Args:
             query: User query
-            order_details: Order information
+            order_details: Order information (from state["entities"]["order_details"])
             policy_text: Retrieved policy text
+            state: Current orchestrator state with triage + database results
         
         Returns:
             PolicyEvaluationOutput with structured decision
         """
-        logger.info(f"Evaluating policy for order {order_details.order_id}")
+        # Extract order_details from state - these are updated from triage + database agents
+        od = state.get("entities", {}).get("order_details", order_details) if state else order_details
+        
+        # Handle both dict and Pydantic model formats
+        order_id = od.get("order_id") if isinstance(od, dict) else od.order_id
+        status = od.get("status") if isinstance(od, dict) else od.status
+        order_date = od.get("order_date") if isinstance(od, dict) else od.order_date
+        delivered_date = od.get("delivered_date") if isinstance(od, dict) else od.delivered_date
+        
+        logger.info(f"Evaluating policy for order {order_id}")
         
         # Determine intent from query
         query_lower = query.lower()
@@ -197,15 +208,15 @@ class PolicyEvaluator:
         
         # Evaluate cancellation
         can_cancel, cancel_reason = self._can_cancel_order(
-            order_details.status,
-            order_details.order_date,
+            status,
+            order_date,
             policy_text
         )
         
         # Evaluate exchange/return
         can_exchange, exchange_reason = self._can_exchange_or_return(
-            order_details.delivered_date,
-            order_details.status,
+            delivered_date,
+            status,
             policy_text,
             action="exchange"
         )
@@ -252,7 +263,7 @@ class EnhancedPolicyService:
     def query_with_order_context(
         self,
         query: str,
-        order_details: OrderDetails,
+        state,
         conversation_history: Optional[List[Dict[str, str]]] = None
     ) -> PolicyEvaluationOutput:
         """
@@ -260,20 +271,27 @@ class EnhancedPolicyService:
         
         Args:
             query: User query
-            order_details: Order information
+            state: Orchestrator state containing order_details from triage + database
             conversation_history: Previous messages
         
         Returns:
             PolicyEvaluationOutput with structured decision
         """
-        logger.info(f"Processing query with order context: order_id={order_details.order_id}")
+        # Extract order_details from state (set by database agent)
+        order_details = state.get("entities", {}).get("order_details")
+        
+        if not order_details:
+            logger.error("order_details not found in state")
+            raise ValueError("order_details not found in state")
+        
+        logger.info(f"Processing query with order context: order_id={order_details.get('order_id') if isinstance(order_details, dict) else order_details.order_id}")
         
         # Ensure RAG service is initialized
         if not rag_service._initialized:
             rag_service.initialize()
         
         # Enhance query with order context
-        enhanced_query = self._create_enhanced_query(query, order_details)
+        enhanced_query = self._create_enhanced_query(query, order_details, state)
         
         # Query RAG system for relevant policy
         rag_request = QueryRequest(
@@ -292,6 +310,7 @@ class EnhancedPolicyService:
         evaluation = self.evaluator.evaluate_policy(
             query=query,
             order_details=order_details,
+            state=state,
             policy_text=policy_text
         )
         
@@ -300,9 +319,18 @@ class EnhancedPolicyService:
     def _create_enhanced_query(
         self,
         query: str,
-        order_details: OrderDetails
+        order_details,
+        state
     ) -> str:
-        """Create enhanced query with order context."""
+        """Create enhanced query with order context extracted from state."""
+        # Extract order_details from state - could be dict or OrderDetails model
+        od = state.get("entities", {}).get("order_details", order_details)
+        
+        # Handle both dict and Pydantic model
+        product = od.get("product") if isinstance(od, dict) else od.product
+        status = od.get("status") if isinstance(od, dict) else od.status
+        delivered_date = od.get("delivered_date") if isinstance(od, dict) else od.delivered_date
+        
         # Determine query type
         query_lower = query.lower()
         
@@ -315,12 +343,12 @@ class EnhancedPolicyService:
         else:
             policy_type = "return and exchange"
         
-        # Create context-aware query
-        enhanced = f"What is the {policy_type} policy for {order_details.product}? "
-        enhanced += f"The order status is {order_details.status}. "
+        # Create context-aware query using values from state
+        enhanced = f"What is the {policy_type} policy for {product}? "
+        enhanced += f"The order status is {status}. "
         
-        if order_details.delivered_date and order_details.delivered_date.lower() != "none":
-            enhanced += f"The item was delivered on {order_details.delivered_date}. "
+        if delivered_date and delivered_date.lower() != "none":
+            enhanced += f"The item was delivered on {delivered_date}. "
         
         enhanced += f"How many days are allowed for {policy_type}?"
         
