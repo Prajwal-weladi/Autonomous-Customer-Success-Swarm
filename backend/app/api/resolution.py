@@ -1,15 +1,15 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
 from fastapi.staticfiles import StaticFiles
 
-from core.llm.Resolution_agent_llm import run_agent_llm, ResolutionInput
-from crm.stage_manager import get_stage_transition, STAGES, PIPELINE_ID
-from crm.hubspot_client import update_deal_stage
+from ..agents.resolution.core.llm.Resolution_agent_llm import run_agent_llm, ResolutionInput
+from ..agents.resolution.crm.stage_manager import get_stage_transition, STAGES, PIPELINE_ID
+from ..agents.resolution.crm.hubspot_client import update_deal_stage
 
-app = FastAPI(title="Resolution Agent")
+router = APIRouter()
 
 # ---------------- STATIC FILES ----------------
 
-app.mount(
+router.mount(
     "/labels",
     StaticFiles(
         directory="C:\\Users\\ACER\\Desktop\\GlideCloud\\Customer_success_swarm\\resolution_agent\\static\\labels"
@@ -19,7 +19,7 @@ app.mount(
 
 # ---------------- API ----------------
 
-@app.post("/resolve")
+@router.post("/resolve")
 def resolve(request: ResolutionInput):
     """
     Resolves order via LLM and updates CRM stages accordingly.
