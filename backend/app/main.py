@@ -5,7 +5,6 @@ from app.api.policy import lifespan
 
 app = FastAPI(title="Customer Success Orchestrator", lifespan=lifespan)
 
-app.include_router(message_router)
 # app.include_router(message_router)
 app.include_router(message_router)
 app.include_router(policy_router)
