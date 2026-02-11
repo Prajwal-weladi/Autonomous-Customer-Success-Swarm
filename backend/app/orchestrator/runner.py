@@ -26,6 +26,7 @@ async def run_orchestrator(conversation_id: str, message: str):
             "intent": None,
             "urgency": None,
             "entities": {},
+            "order_details": None,
             "agents_called": [],
             "attempts": {},
             "last_error": None,

@@ -2,7 +2,7 @@
 
 # prompt.py
 
-from app.schemas.model import ResolutionInput
+from ...app.schemas.model import ResolutionInput
 
 
 def get_llm_prompt(data: ResolutionInput) -> str:

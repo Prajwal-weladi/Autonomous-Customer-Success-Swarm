@@ -16,3 +16,4 @@ faiss-cpu
 numpy
 requests
 python-multipart
+fpdf

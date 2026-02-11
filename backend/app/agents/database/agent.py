@@ -15,7 +15,8 @@ async def database_agent(state):
         - state["current_state"] to "POLICY_CHECK" on success
         - state["current_state"] to "HUMAN_HANDOFF" on error
     """
-    # Get order_id from state (set by triage)
+    # Ensure entities exist and fetch order_id (set by triage)
+    state.setdefault("entities", {})
     order_id = state["entities"].get("order_id")
 
     if not order_id:
@@ -25,6 +26,7 @@ async def database_agent(state):
         if intent in ["general_question", "technical_issue"]:
             # For these intents, we can skip database lookup
             state["entities"]["order_details"] = None
+            state["order_details"] = None
             state["current_state"] = "POLICY_CHECK"
             return state
         else:
@@ -45,6 +47,7 @@ async def database_agent(state):
 
     # Successfully fetched order details
     state["entities"]["order_details"] = db_response["order_details"]
+    state["order_details"] = db_response["order_details"]
 
     # Move to next state
     state["current_state"] = "POLICY_CHECK"
