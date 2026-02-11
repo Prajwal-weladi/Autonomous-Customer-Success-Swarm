@@ -3,7 +3,7 @@ Ollama LLM client for generation tasks.
 """
 from typing import Optional, Dict, Any
 
-from langchain_community.llms import Ollama
+from langchain_ollama import OllamaLLM
 
 from ..core.config import settings
 from ..core.logger import setup_logger
@@ -25,7 +25,7 @@ class OllamaClient:
         self.temperature = temperature
         self.max_tokens = max_tokens
         
-        self.llm = Ollama(
+        self.llm = OllamaLLM(
             model=model,
             base_url=settings.OLLAMA_BASE_URL,
             temperature=temperature,
@@ -59,7 +59,7 @@ class OllamaClient:
         try:
             # Create a new instance with custom parameters if needed
             if temperature is not None or max_tokens is not None:
-                custom_llm = Ollama(
+                custom_llm = OllamaLLM(
                     model=self.model,
                     base_url=settings.OLLAMA_BASE_URL,
                     temperature=temperature or self.temperature,

@@ -2,6 +2,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from app.orchestrator.runner import run_orchestrator
+from app.agents.triage.agent import run_triage
+from app.agents.database.db_service import fetch_order_details
+from app.agents.policy.agent import check_refund_policy, check_return_policy, check_exchange_policy
 
 router = APIRouter()
 
@@ -23,6 +26,40 @@ class MessageResponse(BaseModel):
     order_details: Optional[Dict[str, Any]] = None
     agents_called: Optional[list] = None
     current_state: Optional[str] = None
+
+
+class TriageOutput(BaseModel):
+    """Output from Triage Agent"""
+    intent: str
+    urgency: str
+    order_id: Optional[str]
+    user_issue: str
+    confidence: float
+
+
+class DatabaseOutput(BaseModel):
+    """Output from Database Agent"""
+    order_found: bool
+    order_details: Optional[Dict[str, Any]]
+    error: Optional[str] = None
+
+
+class PolicyOutput(BaseModel):
+    """Output from Policy Agent"""
+    policy_type: Optional[str]
+    allowed: bool
+    reason: str
+    policy_checked: bool
+
+
+class PipelineResponse(BaseModel):
+    """Response showing the complete pipeline flow"""
+    conversation_id: str
+    message: str
+    triage_output: TriageOutput
+    database_output: DatabaseOutput
+    policy_output: PolicyOutput
+    status: str = "completed"
 
 
 @router.post("/v1/message", response_model=MessageResponse, response_model_exclude_none=True)
@@ -69,3 +106,128 @@ async def handle_message(req: MessageRequest):
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "service": "customer_success_orchestrator"}
+
+
+@router.post("/v1/pipeline", response_model=PipelineResponse)
+async def run_pipeline(req: MessageRequest):
+    """
+    Pipeline endpoint that explicitly shows data flow through agents.
+    
+    Flow: Triage -> Database -> Policy
+    - Triage extracts intent, urgency, order_id from message
+    - Database fetches order_details using order_id
+    - Policy validates the request against company policies
+    
+    Args:
+        req: MessageRequest containing conversation_id and message
+        
+    Returns:
+        PipelineResponse with outputs from each agent step
+    """
+    try:
+        # Step 1: TRIAGE - Extract intent, urgency, order_id
+        print(f"\n📋 STEP 1: TRIAGE - Analyzing message: '{req.message}'")
+        triage_result = run_triage(req.message)
+        
+        triage_output = TriageOutput(
+            intent=triage_result.get("intent", "unknown"),
+            urgency=triage_result.get("urgency", "normal"),
+            order_id=triage_result.get("order_id"),
+            user_issue=triage_result.get("user_issue", req.message),
+            confidence=triage_result.get("confidence", 0.0)
+        )
+        print(f"✅ TRIAGE RESULT: intent={triage_output.intent}, order_id={triage_output.order_id}")
+        
+        # Step 2: DATABASE - Fetch order details using order_id from triage
+        print(f"\n📊 STEP 2: DATABASE - Fetching order details")
+        database_output = DatabaseOutput(
+            order_found=False,
+            order_details=None,
+            error="Order ID not found"
+        )
+        
+        if triage_output.order_id:
+            try:
+                db_response = fetch_order_details(triage_output.order_id)
+                database_output = DatabaseOutput(
+                    order_found=db_response.get("order_found", False),
+                    order_details=db_response.get("order_details"),
+                    error=db_response.get("error")
+                )
+                if database_output.order_found:
+                    print(f"✅ DATABASE RESULT: Order found - {database_output.order_details}")
+                else:
+                    print(f"⚠️ DATABASE RESULT: {database_output.error}")
+            except Exception as db_error:
+                database_output = DatabaseOutput(
+                    order_found=False,
+                    order_details=None,
+                    error=f"Database error: {str(db_error)}"
+                )
+                print(f"❌ DATABASE ERROR: {database_output.error}")
+        
+        # Step 3: POLICY - Validate against policies using order_details
+        print(f"\n🔒 STEP 3: POLICY - Validating against policies")
+        policy_output = PolicyOutput(
+            policy_type=None,
+            allowed=False,
+            reason="Unable to validate - no order details",
+            policy_checked=False
+        )
+        
+        if database_output.order_found and database_output.order_details:
+            order_details = database_output.order_details
+            intent = triage_output.intent
+            
+            # Check policy based on intent
+            if intent == "refund":
+                policy_result = check_refund_policy(order_details)
+                policy_output = PolicyOutput(
+                    policy_type="refund",
+                    allowed=policy_result.get("allowed", False),
+                    reason=policy_result.get("reason", ""),
+                    policy_checked=True
+                )
+            elif intent == "return":
+                policy_result = check_return_policy(order_details)
+                policy_output = PolicyOutput(
+                    policy_type="return",
+                    allowed=policy_result.get("allowed", False),
+                    reason=policy_result.get("reason", ""),
+                    policy_checked=True
+                )
+            elif intent == "exchange":
+                policy_result = check_exchange_policy(order_details)
+                policy_output = PolicyOutput(
+                    policy_type="exchange",
+                    allowed=policy_result.get("allowed", False),
+                    reason=policy_result.get("reason", ""),
+                    policy_checked=True
+                )
+            else:
+                # No policy check needed for this intent
+                policy_output = PolicyOutput(
+                    policy_type=None,
+                    allowed=True,
+                    reason=f"No policy validation required for '{intent}'",
+                    policy_checked=False
+                )
+            
+            print(f"✅ POLICY RESULT: allowed={policy_output.allowed}, reason={policy_output.reason}")
+        
+        # Return complete pipeline response
+        return PipelineResponse(
+            conversation_id=req.conversation_id,
+            message=req.message,
+            triage_output=triage_output,
+            database_output=database_output,
+            policy_output=policy_output,
+            status="completed"
+        )
+        
+    except Exception as e:
+        print(f"❌ PIPELINE ERROR: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Pipeline error: {str(e)}"
+        )

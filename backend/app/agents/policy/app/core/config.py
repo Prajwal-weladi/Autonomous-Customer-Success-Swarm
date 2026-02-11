@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     # Ollama settings
     OLLAMA_BASE_URL: str = Field(default="http://localhost:11434", env="OLLAMA_BASE_URL")
     GENERATION_MODEL: str = Field(default="mistral:instruct", env="GENERATION_MODEL")
-    RERANKING_MODEL: str = Field(default="llama3.2", env="RERANKING_MODEL")
+    RERANKING_MODEL: str = Field(default="llama3", env="RERANKING_MODEL")
     EMBEDDING_MODEL: str = Field(default="mxbai-embed-large", env="EMBEDDING_MODEL")
     
     # RAG parameters

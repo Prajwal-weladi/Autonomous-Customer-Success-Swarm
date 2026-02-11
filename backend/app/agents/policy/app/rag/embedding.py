@@ -4,11 +4,11 @@ from typing import List, Optional, Dict, Any, Tuple
 
 import numpy as np
 import faiss
-from langchain_community.embeddings import OllamaEmbeddings
+from langchain_ollama import OllamaEmbeddings
 
-from ..core.config import settings
-from ..core.logger import setup_logger
-from ..core.models import DocumentChunk
+from app.agents.policy.app.core.config import settings
+from app.agents.policy.app.core.logger import setup_logger
+from app.agents.policy.app.core.models import DocumentChunk
 
 
 logger = setup_logger(__name__)

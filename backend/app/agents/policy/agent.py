@@ -130,7 +130,7 @@ async def policy_agent(state):
         - state["current_state"] to "RESOLUTION" on success
     """
     intent = state.get("intent")
-    order_details = state["entities"].get("order_details")
+    order_details = state.get("entities", {}).get("order_details") or state.get("order_details")
     
     # Initialize policy result
     policy_result = {

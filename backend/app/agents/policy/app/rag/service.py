@@ -4,9 +4,9 @@ RAG service manager coordinating all components.
 from typing import Optional
 import time
 
-from ..core.config import settings
-from ..core.logger import setup_logger
-from ..core.models import QueryRequest, QueryResponse
+from app.agents.policy.app.core.config import settings
+from app.agents.policy.app.core.logger import setup_logger
+from app.agents.policy.app.core.models import QueryRequest, QueryResponse
 from .embedding import EmbeddingGenerator, FAISSVectorStore
 from .llm import OllamaClient, create_reranking_client
 from .pipeline import AdvancedRAGPipeline

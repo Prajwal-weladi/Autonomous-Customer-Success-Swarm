@@ -1,4 +1,7 @@
-from app.agents.resolution.core.services.return_label_service import generate_return_label
+from ollama import chat
+import json
+from ...core.llm.prompt import get_llm_prompt
+from ...core.services.return_label_service import generate_return_label
 from app.agents.resolution.app.schemas.model import ResolutionInput
 
 

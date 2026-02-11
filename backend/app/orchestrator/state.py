@@ -15,6 +15,7 @@ class ConversationState(TypedDict):
     intent: Optional[str]
     urgency: Optional[str]
     entities: Dict[str, Any]
+    order_details: Optional[Dict[str, Any]]
 
     agents_called: List[str]
     attempts: Dict[str, int]
