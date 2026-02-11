@@ -1,7 +1,7 @@
 import requests
 import os
 import dotenv
-dotenv.load_dotenv()
+dotenv.load_dotenv("app/agents/resolution/.env")
 HUBSPOT_TOKEN = os.getenv("HUBSPOT_TOKEN")
 BASE_URL = "https://api.hubapi.com"
 
