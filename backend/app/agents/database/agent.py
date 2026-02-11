@@ -17,9 +17,15 @@ async def database_agent(state):
     """
     # Ensure entities exist and fetch order_id (set by triage)
     state.setdefault("entities", {})
+
     order_id = state["entities"].get("order_id")
 
+    # 🔴 Case 1: No order ID extracted
     if not order_id:
+        state["reply"] = "I could not find an order ID in your message. Please provide a valid order ID."
+        state["status"] = "handoff"
+        state["current_state"] = "HUMAN_HANDOFF"
+        return state
         # Check intent - some intents don't require order_id
         intent = state.get("intent")
         
@@ -35,20 +41,21 @@ async def database_agent(state):
             state["current_state"] = "HUMAN_HANDOFF"
             return state
 
-    # Fetch order details from database
+    # 🟢 Case 2: Call real database
     db_response = fetch_order_details(order_id)
 
+    # 🔴 Case 3: Order not found
     if not db_response.get("order_found"):
-        # Order not found in database
-        error_msg = db_response.get("error", "Order not found")
-        state["last_error"] = f"Database lookup failed: {error_msg}"
-        state["current_state"] = "HUMAN_HANDOFF"
+        state["reply"] = f"Order with ID {order_id} not found. Please verify your order ID."
+        state["status"] = "completed"
+        state["current_state"] = "COMPLETED"
         return state
 
-    # Successfully fetched order details
+    # 🟢 Case 4: Order found
     state["entities"]["order_details"] = db_response["order_details"]
     state["order_details"] = db_response["order_details"]
 
     # Move to next state
     state["current_state"] = "POLICY_CHECK"
+
     return state
