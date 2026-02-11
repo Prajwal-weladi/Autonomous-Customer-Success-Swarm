@@ -25,7 +25,7 @@ URGENT_WORDS = ["urgent", "now", "immediately", "asap", "emergency", "right now"
 
 def extract_order_id(text: str) -> str | None:
     """Extract order ID from text (3+ digits)"""
-    match = re.search(r"\b\d{3,}\b", text)
+    match = re.search(r"\b\d+\b", text)
     return match.group() if match else None
 
 
@@ -77,7 +77,7 @@ def run_triage(message: str) -> dict:
     try:
         prompt = TRIAGE_PROMPT.format(message=message)
         response = ollama.chat(
-            model="llama3",
+            model="mistral:instruct",
             messages=[{"role": "user", "content": prompt}],
             options={"temperature": 0.1}  # Lower temperature for more consistent output
         )

@@ -46,7 +46,7 @@ async def handle_message(req: MessageRequest):
         # Build response
         return MessageResponse(
             conversation_id=state["conversation_id"],
-            reply=None,
+            reply=state.get("reply"), 
             status=state["status"],
             intent=state.get("intent"),
             urgency=state.get("urgency"),
