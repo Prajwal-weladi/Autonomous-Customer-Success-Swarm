@@ -7,15 +7,6 @@ from ..agents.resolution.crm.hubspot_client import update_deal_stage
 
 router = APIRouter()
 
-# ---------------- STATIC FILES ----------------
-
-router.mount(
-    "/labels",
-    StaticFiles(
-        directory="C:\\Users\\ACER\\Desktop\\GlideCloud\\Customer_success_swarm\\resolution_agent\\static\\labels"
-    ),
-    name="labels"
-)
 
 # ---------------- API ----------------
 
