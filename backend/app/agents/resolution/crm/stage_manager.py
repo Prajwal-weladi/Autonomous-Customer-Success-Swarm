@@ -5,8 +5,8 @@ PIPELINE_ID = "default"
 STAGES = {
     "DELIVERED": "appointmentscheduled",
     "EXCHANGED": "qualifiedtobuy",
-    "CANCELLED": "cancelled",
-    "REFUND_DONE": "refund_done"
+    "CANCELLED": "3071652573",
+    "REFUND_DONE": "presentationscheduled"
 }
 
 def get_stage_transition(intent: str):
@@ -15,11 +15,12 @@ def get_stage_transition(intent: str):
     """
     intent = intent.lower()
 
-    if intent == "exchange":
+    if intent == "exchange" or intent == "return":
         return ["EXCHANGED"]
 
-    if intent == "cancel":
+    if intent == "cancel" or intent == "refund":
         # sequential transitions
         return ["CANCELLED", "REFUND_DONE"]
 
     return []
+
