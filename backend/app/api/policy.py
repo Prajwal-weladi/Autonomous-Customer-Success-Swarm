@@ -4,6 +4,7 @@ from typing import Dict, Any
 from fastapi import FastAPI, APIRouter, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from app.orchestrator.guard import agent_guard
 
 from ..agents.policy.app.core.config import settings
 from ..agents.policy.app.core.logger import setup_logger
@@ -83,7 +84,7 @@ async def query_policy(request: QueryRequest) -> QueryResponse:
             detail=f"Query processing failed: {str(e)}"
         )
 
-
+@agent_guard("policy")
 @router.post("/policy/evaluate", response_model=PolicyQueryResponse)
 async def evaluate_policy_with_order(request: PolicyQueryRequest) -> PolicyQueryResponse:
     try:
