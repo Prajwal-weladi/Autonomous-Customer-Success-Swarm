@@ -24,9 +24,17 @@ URGENT_WORDS = ["urgent", "now", "immediately", "asap", "emergency", "right now"
 
 
 def extract_order_id(text: str) -> str | None:
-    """Extract order ID from text (3+ digits)"""
-    match = re.search(r"\b\d+\b", text)
-    return match.group() if match else None
+    """Extract order ID after 'order' or 'id' keyword"""
+    match = re.search(r'(?:order\s*)?id\s*(\d+)', text, re.IGNORECASE)
+    if match:
+        return match.group(1)
+
+    # fallback: order 3456
+    match = re.search(r'order\s*(\d+)', text, re.IGNORECASE)
+    if match:
+        return match.group(1)
+
+    return None
 
 
 def rule_based_intent(text: str) -> str | None:
