@@ -124,7 +124,7 @@ async def health_check():
 @router.post("/v1/pipeline", response_model=PipelineResponse)
 async def run_pipeline(req: MessageRequest):
     """
-    Pipeline endpoint that explicitly shows data flow through agents.
+    Pipeline endpoint that explicitly shows data flow through ALL agents.
     
     Flow: Triage -> Database -> Policy -> Resolution
     - Triage extracts intent, urgency, order_id from message
@@ -136,7 +136,7 @@ async def run_pipeline(req: MessageRequest):
         req: MessageRequest containing conversation_id and message
         
     Returns:
-        PipelineResponse with outputs from each agent step
+        PipelineResponse with outputs from each agent step including final response
     """
     try:
         # Step 1: TRIAGE - Extract intent, urgency, order_id

@@ -61,10 +61,12 @@ class Settings(BaseSettings):
     SCRAPE_TIMEOUT: int = Field(default=30, env="SCRAPE_TIMEOUT")
     SCRAPE_DELAY: float = Field(default=1.0, env="SCRAPE_DELAY")
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = True
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "case_sensitive": True,
+        "extra": "ignore",
+    }
 
 
 # Global settings instance
