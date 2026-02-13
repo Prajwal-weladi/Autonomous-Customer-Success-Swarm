@@ -5,6 +5,8 @@ from app.orchestrator.runner import run_orchestrator
 from app.agents.triage.agent import run_triage
 from app.agents.database.db_service import fetch_order_details
 from app.agents.policy.agent import check_refund_policy, check_return_policy, check_exchange_policy
+from app.agents.resolution.core.llm.Resolution_agent_llm import run_agent_llm
+from app.agents.resolution.app.schemas.model import ResolutionInput
 
 router = APIRouter()
 
@@ -52,6 +54,16 @@ class PolicyOutput(BaseModel):
     policy_checked: bool
 
 
+class ResolutionOutput(BaseModel):
+    """Output from Resolution Agent"""
+    action: str
+    message: str
+    return_label_url: Optional[str] = None
+    refund_amount: Optional[int] = None
+    status: Optional[str] = None
+    reason: Optional[str] = None
+
+
 class PipelineResponse(BaseModel):
     """Response showing the complete pipeline flow"""
     conversation_id: str
@@ -59,6 +71,7 @@ class PipelineResponse(BaseModel):
     triage_output: TriageOutput
     database_output: DatabaseOutput
     policy_output: PolicyOutput
+    resolution_output: ResolutionOutput
     status: str = "completed"
 
 
@@ -113,10 +126,11 @@ async def run_pipeline(req: MessageRequest):
     """
     Pipeline endpoint that explicitly shows data flow through agents.
     
-    Flow: Triage -> Database -> Policy
+    Flow: Triage -> Database -> Policy -> Resolution
     - Triage extracts intent, urgency, order_id from message
     - Database fetches order_details using order_id
     - Policy validates the request against company policies
+    - Resolution agent processes the request and generates final action
     
     Args:
         req: MessageRequest containing conversation_id and message
@@ -215,6 +229,59 @@ async def run_pipeline(req: MessageRequest):
             
             print(f"✅ POLICY RESULT: allowed={policy_output.allowed}, reason={policy_output.reason}")
         
+        # Step 4: RESOLUTION - Process the request and generate final action
+        print(f"\n🚀 STEP 4: RESOLUTION - Processing request")
+        resolution_output = ResolutionOutput(
+            action="deny",
+            message="Unable to process - no valid order or policy check",
+            return_label_url=None,
+            refund_amount=None,
+            status=None,
+            reason="No order details or policy validation failed"
+        )
+        
+        if database_output.order_found and database_output.order_details:
+            order_details = database_output.order_details
+            intent = triage_output.intent
+            
+            try:
+                # Build ResolutionInput from collected data
+                resolution_input = ResolutionInput(
+                    order_id=triage_output.order_id,
+                    intent=intent,
+                    product=order_details.get("product_name"),
+                    size=order_details.get("size"),
+                    amount=order_details.get("amount"),
+                    exchange_allowed=policy_output.allowed if policy_output.policy_type in ["exchange", "return"] else None,
+                    cancel_allowed=policy_output.allowed if policy_output.policy_type in ["refund", "cancel"] else None,
+                    reason=policy_output.reason if not policy_output.allowed else None
+                )
+                
+                # Run resolution agent
+                resolution_result = run_agent_llm(resolution_input)
+                
+                resolution_output = ResolutionOutput(
+                    action=resolution_result.get("action", "deny"),
+                    message=resolution_result.get("message", ""),
+                    return_label_url=resolution_result.get("return_label_url"),
+                    refund_amount=resolution_result.get("refund_amount"),
+                    status=resolution_result.get("status"),
+                    reason=resolution_result.get("reason")
+                )
+                
+                print(f"✅ RESOLUTION RESULT: action={resolution_output.action}, message={resolution_output.message}")
+                
+            except Exception as res_error:
+                resolution_output = ResolutionOutput(
+                    action="error",
+                    message=f"Resolution processing error: {str(res_error)}",
+                    return_label_url=None,
+                    refund_amount=None,
+                    status=None,
+                    reason=str(res_error)
+                )
+                print(f"❌ RESOLUTION ERROR: {resolution_output.reason}")
+        
         # Return complete pipeline response
         return PipelineResponse(
             conversation_id=req.conversation_id,
@@ -222,6 +289,7 @@ async def run_pipeline(req: MessageRequest):
             triage_output=triage_output,
             database_output=database_output,
             policy_output=policy_output,
+            resolution_output=resolution_output,
             status="completed"
         )
         
