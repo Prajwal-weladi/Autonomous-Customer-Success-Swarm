@@ -24,7 +24,7 @@ def generate_sql_from_llm(order_id: int) -> str:
         prompt = text_to_sql_prompt(order_id)
 
         response = ollama.chat(
-            model="llama3.2",
+            model="mistral:instruct",
             messages=[{"role": "user", "content": prompt}],
             options={"temperature": 0.1}  # Low temperature for consistent SQL
         )

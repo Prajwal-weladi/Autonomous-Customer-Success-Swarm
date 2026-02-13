@@ -52,6 +52,12 @@ class PolicyOutput(BaseModel):
     policy_checked: bool
 
 
+class ResolutionOutput(BaseModel):
+    """Output from Resolution Agent"""
+    reply: str
+    status: str
+
+
 class PipelineResponse(BaseModel):
     """Response showing the complete pipeline flow"""
     conversation_id: str
@@ -59,6 +65,7 @@ class PipelineResponse(BaseModel):
     triage_output: TriageOutput
     database_output: DatabaseOutput
     policy_output: PolicyOutput
+    resolution_output: ResolutionOutput
     status: str = "completed"
 
 
@@ -111,18 +118,19 @@ async def health_check():
 @router.post("/v1/pipeline", response_model=PipelineResponse)
 async def run_pipeline(req: MessageRequest):
     """
-    Pipeline endpoint that explicitly shows data flow through agents.
+    Pipeline endpoint that explicitly shows data flow through ALL agents.
     
-    Flow: Triage -> Database -> Policy
+    Flow: Triage -> Database -> Policy -> Resolution
     - Triage extracts intent, urgency, order_id from message
     - Database fetches order_details using order_id
     - Policy validates the request against company policies
+    - Resolution generates the final customer response
     
     Args:
         req: MessageRequest containing conversation_id and message
         
     Returns:
-        PipelineResponse with outputs from each agent step
+        PipelineResponse with outputs from each agent step including final response
     """
     try:
         # Step 1: TRIAGE - Extract intent, urgency, order_id
@@ -215,6 +223,36 @@ async def run_pipeline(req: MessageRequest):
             
             print(f"✅ POLICY RESULT: allowed={policy_output.allowed}, reason={policy_output.reason}")
         
+        # Step 4: RESOLUTION - Generate final response
+        print(f"\n✅ STEP 4: RESOLUTION - Generating final response")
+        
+        # Build state for resolution agent
+        state = {
+            "conversation_id": req.conversation_id,
+            "intent": triage_output.intent,
+            "entities": {
+                "order_id": triage_output.order_id,
+                "user_issue": triage_output.user_issue,
+                "order_details": database_output.order_details,
+                "policy_result": {
+                    "allowed": policy_output.allowed,
+                    "reason": policy_output.reason
+                }
+            },
+            "current_state": "RESOLUTION",
+            "status": "in_progress"
+        }
+        
+        # Run full orchestrator to get resolution
+        final_state = await run_orchestrator(req.conversation_id, req.message)
+        
+        resolution_output = ResolutionOutput(
+            reply=final_state.get("reply", "Unable to generate response"),
+            status=final_state.get("status", "completed")
+        )
+        
+        print(f"✅ RESOLUTION RESULT: {resolution_output.reply}")
+        
         # Return complete pipeline response
         return PipelineResponse(
             conversation_id=req.conversation_id,
@@ -222,6 +260,7 @@ async def run_pipeline(req: MessageRequest):
             triage_output=triage_output,
             database_output=database_output,
             policy_output=policy_output,
+            resolution_output=resolution_output,
             status="completed"
         )
         
