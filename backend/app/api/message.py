@@ -7,6 +7,9 @@ from app.agents.database.db_service import fetch_order_details
 from app.agents.policy.agent import check_refund_policy, check_return_policy, check_exchange_policy
 from app.agents.resolution.core.llm.Resolution_agent_llm import run_agent_llm
 from app.agents.resolution.app.schemas.model import ResolutionInput
+from app.agents.resolution.crm.stage_manager import get_stage_transition, STAGES, PIPELINE_ID
+from app.agents.resolution.crm.hubspot_client import update_deal_stage
+
 
 router = APIRouter()
 
@@ -259,6 +262,26 @@ async def run_pipeline(req: MessageRequest):
                 
                 # Run resolution agent
                 resolution_result = run_agent_llm(resolution_input)
+
+                # ✅ CRM Stage Handling (SAME as /resolve endpoint)
+                try:
+                    action = resolution_result.get("action")
+                    order_id = triage_output.order_id
+                
+                    stage_keys = get_stage_transition(action)
+                
+                    for stage_key in stage_keys:
+                        stage_id = STAGES.get(stage_key)
+                        if stage_id:
+                            update_deal_stage(
+                                order_id=order_id,
+                                pipeline_id=PIPELINE_ID,
+                                stage_id=stage_id
+                            )
+                
+                except Exception as crm_error:
+                    print("CRM update failed:", crm_error)
+
                 
                 resolution_output = ResolutionOutput(
                     action=resolution_result.get("action", "deny"),
