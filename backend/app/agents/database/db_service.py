@@ -26,19 +26,18 @@ def generate_sql_from_llm(order_id: int) -> str:
         response = ollama.chat(
             model="mistral:instruct",
             messages=[{"role": "user", "content": prompt}],
-            options={"temperature": 0.1}  # Low temperature for consistent SQL
+            options={"temperature": 0.1}
         )
 
         raw_output = response["message"]["content"].strip()
         
-        # Clean up the output
-        # Remove markdown code blocks if present
+        # Clean markdown if present
         if "```sql" in raw_output:
             raw_output = raw_output.split("```sql")[1].split("```")[0].strip()
         elif "```" in raw_output:
             raw_output = raw_output.split("```")[1].split("```")[0].strip()
         
-        # Ensure it ends with semicolon
+        # Ensure semicolon
         if not raw_output.endswith(";"):
             raw_output = raw_output.split(";")[0] + ";"
             
@@ -46,7 +45,6 @@ def generate_sql_from_llm(order_id: int) -> str:
         
     except Exception as e:
         print(f"LLM SQL generation failed: {e}, using fallback SQL")
-        # Fallback to direct SQL
         return f"SELECT * FROM orders WHERE order_id = {order_id};"
 
 
@@ -69,23 +67,14 @@ def execute_sql_query(sql_query: str):
 def fetch_order_details(order_id: int):
     """
     Main function called by orchestrator to fetch order details.
-    
-    Args:
-        order_id: The order ID to fetch
-        
-    Returns:
-        dict: Contains order_found boolean and order_details if found
     """
     try:
-        # Convert order_id to int if it's a string
         if isinstance(order_id, str):
             order_id = int(order_id)
         
-        # Generate SQL query
         sql_query = generate_sql_from_llm(order_id)
         print(f"Generated SQL: {sql_query}")
         
-        # Execute query
         row = execute_sql_query(sql_query)
 
         if row:
@@ -98,7 +87,8 @@ def fetch_order_details(order_id: int):
                     "size": row.size,
                     "order_date": str(row.order_date),
                     "delivered_date": str(row.delivered_date) if row.delivered_date else None,
-                    "status": row.status
+                    "status": row.status,
+                    "amount": getattr(row, "amount", 0) or 0  # ⭐ ADDED (SAFE)
                 }
             }
         else:
@@ -107,7 +97,7 @@ def fetch_order_details(order_id: int):
                 "error": f"Order {order_id} not found in database"
             }
 
-    except ValueError as e:
+    except ValueError:
         return {
             "order_found": False,
             "error": f"Invalid order_id format: {order_id}"

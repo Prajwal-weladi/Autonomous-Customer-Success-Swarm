@@ -13,6 +13,7 @@ class Orders(Base):
     order_date = Column(Date, nullable=False)
     delivered_date = Column(Date, nullable=True)
     status = Column(String, nullable=False)
+    amount=Column(Integer, nullable=False)
     
     def __repr__(self):
         return f"<Order(order_id={self.order_id}, product={self.product}, status={self.status})>"
