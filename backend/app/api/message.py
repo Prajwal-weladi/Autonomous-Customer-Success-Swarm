@@ -9,6 +9,7 @@ from app.agents.resolution.core.llm.Resolution_agent_llm import run_agent_llm
 from app.agents.resolution.app.schemas.model import ResolutionInput
 from app.agents.resolution.crm.stage_manager import get_stage_transition, STAGES, PIPELINE_ID
 from app.agents.resolution.crm.hubspot_client import update_deal_stage
+from app.storage.memory import load_state, save_state
 
 
 router = APIRouter()
@@ -142,6 +143,10 @@ async def run_pipeline(req: MessageRequest):
         PipelineResponse with outputs from each agent step including final response
     """
     try:
+        # Load prior conversation context for continuity
+        previous_state = load_state(req.conversation_id) or {}
+        previous_entities = previous_state.get("entities", {})
+
         # Step 1: TRIAGE - Extract intent, urgency, order_id
         print(f"\n📋 STEP 1: TRIAGE - Analyzing message: '{req.message}'")
         triage_result = run_triage(req.message)
@@ -153,6 +158,12 @@ async def run_pipeline(req: MessageRequest):
             user_issue=triage_result.get("user_issue", req.message),
             confidence=triage_result.get("confidence", 0.0)
         )
+        # Reuse the last known order ID if not provided in this message
+        if not triage_output.order_id:
+            prior_order_id = previous_entities.get("order_id")
+            if prior_order_id:
+                triage_output.order_id = prior_order_id
+
         print(f"✅ TRIAGE RESULT: intent={triage_output.intent}, order_id={triage_output.order_id}")
         
         # Step 2: DATABASE - Fetch order details using order_id from triage
@@ -182,6 +193,16 @@ async def run_pipeline(req: MessageRequest):
                     error=f"Database error: {str(db_error)}"
                 )
                 print(f"❌ DATABASE ERROR: {database_output.error}")
+        else:
+            # Fall back to cached order details when available
+            cached_details = previous_entities.get("order_details")
+            if cached_details:
+                database_output = DatabaseOutput(
+                    order_found=True,
+                    order_details=cached_details,
+                    error=None
+                )
+                print("✅ DATABASE RESULT: Using cached order details")
         
         # Step 3: POLICY - Validate against policies using order_details
         print(f"\n🔒 STEP 3: POLICY - Validating against policies")
@@ -313,6 +334,27 @@ async def run_pipeline(req: MessageRequest):
                 )
                 print(f"❌ RESOLUTION ERROR: {resolution_output.reason}")
         
+        # Persist conversation context for future turns
+        next_order_details = (
+            database_output.order_details
+            if database_output.order_found
+            else previous_entities.get("order_details")
+        )
+
+        save_state(
+            req.conversation_id,
+            {
+                "conversation_id": req.conversation_id,
+                "entities": {
+                    "order_id": triage_output.order_id or previous_entities.get("order_id"),
+                    "order_details": next_order_details,
+                    "intent": triage_output.intent,
+                    "urgency": triage_output.urgency,
+                    "user_issue": triage_output.user_issue,
+                }
+            }
+        )
+
         # Return complete pipeline response
         return PipelineResponse(
             conversation_id=req.conversation_id,

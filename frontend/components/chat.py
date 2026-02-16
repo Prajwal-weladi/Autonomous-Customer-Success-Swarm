@@ -127,9 +127,12 @@ def format_pipeline_metadata(response: dict) -> str:
     return " | ".join(parts) if parts else None
 
 
-def render_chat():
+def render_chat(conversation_index: int):
     """Render chat interface with pipeline metadata"""
-    for msg in st.session_state.messages:
+    conversation = st.session_state.conversations[conversation_index]
+    messages = conversation.get("messages", [])
+
+    for msg in messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
             if msg.get("pipeline_data"):
@@ -142,15 +145,15 @@ def render_chat():
                 if meta_text:
                     st.caption(meta_text)
 
-    if st.session_state.status == "handoff":
+    if conversation.get("status") == "handoff":
         st.warning("This conversation has been handed over to a human agent.")
         return
 
-    user_input = st.chat_input("Type your message")
+    user_input = st.chat_input("Type your message", key=f"chat_input_{conversation_index}")
 
     if user_input:
         # Add user message to history
-        st.session_state.messages.append({
+        st.session_state.conversations[conversation_index]["messages"].append({
             "role": "user",
             "content": user_input
         })
@@ -162,17 +165,20 @@ def render_chat():
         with st.spinner("Processing through pipeline... 🔄"):
             try:
                 pipeline_response = send_pipeline_message(
-                    st.session_state.conversation_id,
+                    conversation["conversation_id"],
                     user_input
                 )
 
                 # Build comprehensive user message from pipeline response
                 assistant_reply = format_resolution_message(pipeline_response)
                 
-                st.session_state.status = pipeline_response.get("status", "completed")
+                st.session_state.conversations[conversation_index]["status"] = pipeline_response.get(
+                    "status",
+                    "completed"
+                )
 
                 # Store complete pipeline data with message
-                st.session_state.messages.append({
+                st.session_state.conversations[conversation_index]["messages"].append({
                     "role": "assistant",
                     "content": assistant_reply,
                     "pipeline_data": pipeline_response
@@ -189,7 +195,7 @@ def render_chat():
             except Exception as e:
                 error_msg = f"❌ Error processing request: {str(e)}"
                 st.error(error_msg)
-                st.session_state.messages.append({
+                st.session_state.conversations[conversation_index]["messages"].append({
                     "role": "assistant",
                     "content": error_msg
                 })

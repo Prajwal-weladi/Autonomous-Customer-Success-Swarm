@@ -1,12 +1,18 @@
 import uuid
 import streamlit as st
 
+
+def new_conversation() -> dict:
+    return {
+        "conversation_id": str(uuid.uuid4()),
+        "messages": [],
+        "status": "in_progress"
+    }
+
+
 def init_session():
-    if "conversation_id" not in st.session_state:
-        st.session_state.conversation_id = str(uuid.uuid4())
+    if "conversations" not in st.session_state:
+        st.session_state.conversations = []
 
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-
-    if "status" not in st.session_state:
-        st.session_state.status = "in_progress"
+    if not st.session_state.conversations:
+        st.session_state.conversations.append(new_conversation())
