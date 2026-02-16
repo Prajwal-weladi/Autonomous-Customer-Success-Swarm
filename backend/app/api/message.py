@@ -249,16 +249,24 @@ async def run_pipeline(req: MessageRequest):
             
             try:
                 # Build ResolutionInput from collected data
+                # ✅ SAFE product extraction (no logic change, only robustness)
+                product_name = (
+                    order_details.get("product")
+                    or order_details.get("product_name")
+                    or order_details.get("item_name")
+                )
+                
                 resolution_input = ResolutionInput(
                     order_id=triage_output.order_id,
                     intent=intent,
-                    product=order_details.get("product_name"),
+                    product=product_name,
                     size=order_details.get("size"),
                     amount=order_details.get("amount"),
                     exchange_allowed=policy_output.allowed if policy_output.policy_type in ["exchange", "return"] else None,
                     cancel_allowed=policy_output.allowed if policy_output.policy_type in ["refund", "cancel"] else None,
                     reason=policy_output.reason if not policy_output.allowed else None
                 )
+
                 
                 # Run resolution agent
                 resolution_result = run_agent_llm(resolution_input)

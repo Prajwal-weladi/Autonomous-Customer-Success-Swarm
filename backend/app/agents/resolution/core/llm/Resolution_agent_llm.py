@@ -12,7 +12,12 @@ def run_agent_llm(data: ResolutionInput) -> dict:
     complaints, and technical issues.
     """
 
-    intent = data.intent.lower()
+    intent = (data.intent or "").lower()
+
+    # ✅ SAFE FALLBACKS (VERY IMPORTANT)
+    product_name = data.product or "the product"
+    size_value = data.size if data.size not in [None, 0, "0"] else "N/A"
+    order_status = getattr(data, "status", "processing")
 
     # ----------------- DIRECT INTENTS -----------------
 
@@ -20,9 +25,13 @@ def run_agent_llm(data: ResolutionInput) -> dict:
     if intent == "order_tracking":
         return {
             "action": "order_tracking",
-            "message": f"Order {data.order_id} is currently {data.status}.",
+            "message": (
+                f"📦 Order Update\n\n"
+                f"Your order **#{data.order_id}** is currently **{order_status}**.\n"
+                f"If you need further help, I'm here for you!"
+            ),
             "order_id": data.order_id,
-            "status": data.status,
+            "status": order_status,
             "return_label_url": None,
             "refund_amount": None,
             "reason": None
@@ -32,7 +41,11 @@ def run_agent_llm(data: ResolutionInput) -> dict:
     if intent == "complaint":
         return {
             "action": "complaint",
-            "message": f"Your complaint for order {data.order_id} has been registered and will be resolved shortly.",
+            "message": (
+                f"🙏 We're sorry for the inconvenience.\n\n"
+                f"Your complaint for order **#{data.order_id}** has been registered.\n"
+                f"Our support team will review and get back to you shortly."
+            ),
             "order_id": data.order_id,
             "reason": getattr(data, "reason", None),
             "return_label_url": None,
@@ -43,7 +56,11 @@ def run_agent_llm(data: ResolutionInput) -> dict:
     if intent == "technical_issue":
         return {
             "action": "technical_issue",
-            "message": f"We have received your technical issue for order {data.order_id}. Our technical team will resolve it soon.",
+            "message": (
+                f"🛠️ Technical Issue Logged\n\n"
+                f"We've received your issue for order **#{data.order_id}**.\n"
+                f"Our technical team will investigate and update you soon."
+            ),
             "order_id": data.order_id,
             "reason": getattr(data, "reason", None),
             "return_label_url": None,
@@ -56,7 +73,11 @@ def run_agent_llm(data: ResolutionInput) -> dict:
     if intent in ["cancel", "refund"] and not data.cancel_allowed:
         return {
             "action": "deny",
-            "message": f"Cancellation not allowed for order {data.order_id}.",
+            "message": (
+                f"❌ Refund/Cancellation Not Allowed\n\n"
+                f"Order **#{data.order_id}** is not eligible.\n"
+                f"Reason: {data.reason}"
+            ),
             "return_label_url": None,
             "refund_amount": None,
             "reason": data.reason
@@ -66,7 +87,11 @@ def run_agent_llm(data: ResolutionInput) -> dict:
     if intent in ["exchange", "return"] and not data.exchange_allowed:
         return {
             "action": "deny",
-            "message": f"Exchange not allowed for order {data.order_id}.",
+            "message": (
+                f"❌ Exchange Not Allowed\n\n"
+                f"Order **#{data.order_id}** is not eligible.\n"
+                f"Reason: {data.reason}"
+            ),
             "return_label_url": None,
             "refund_amount": None,
             "reason": data.reason
@@ -78,12 +103,22 @@ def run_agent_llm(data: ResolutionInput) -> dict:
     if intent in ["exchange", "return"] and data.exchange_allowed:
         file_name = generate_return_label(
             data.order_id,
-            product=data.product,
+            product=product_name,
             size=data.size
         )
+
         return {
             "action": "exchange",
-            "message": f"Exchange processed for order {data.order_id}.",
+            "message": (
+                f"✅ Your exchange request has been approved!\n\n"
+                f"📦 Product: {product_name}\n"
+                f"🔢 Order ID: {data.order_id}\n"
+                f"📏 Size: {size_value}\n\n"
+                f"📄 A prepaid return label has been generated.\n"
+                f"Please print the label, attach it to your package,\n"
+                f"and ship it back using any courier service.\n\n"
+                f"🔁 Once we receive the item, your replacement will be processed."
+            ),
             "return_label_url": f"http://localhost:8000/labels/{file_name}",
             "refund_amount": None,
             "reason": None
@@ -93,7 +128,11 @@ def run_agent_llm(data: ResolutionInput) -> dict:
     if intent in ["cancel", "refund"] and data.cancel_allowed:
         return {
             "action": "cancel",
-            "message": f"Order {data.order_id} cancelled. Refund of ₹{data.amount} processed.",
+            "message": (
+                f"💰 Refund Initiated\n\n"
+                f"Your order **#{data.order_id}** has been cancelled.\n"
+                f"Refund of **₹{data.amount}** will be processed shortly."
+            ),
             "return_label_url": None,
             "refund_amount": data.amount,
             "reason": None
@@ -103,10 +142,11 @@ def run_agent_llm(data: ResolutionInput) -> dict:
 
     return {
         "action": "deny",
-        "message": f"{intent.capitalize()} cannot be processed for order {data.order_id}.",
+        "message": (
+            f"⚠️ Unable to process request\n\n"
+            f"{intent.capitalize()} cannot be completed for order **#{data.order_id}**."
+        ),
         "return_label_url": None,
         "refund_amount": None,
         "reason": getattr(data, "reason", None)
     }
-
-
