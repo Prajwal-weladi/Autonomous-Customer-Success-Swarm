@@ -1,190 +1,275 @@
 import json
 import re
+import logging
+from typing import Dict, Any
 
 from app.orchestrator.guard import agent_guard
 from app.agents.triage.prompts import TRIAGE_PROMPT
 
+# --------------------------------------------------
+# Logging Configuration
+# --------------------------------------------------
+logger = logging.getLogger("triage_agent")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+)
+
+# --------------------------------------------------
+# Optional Ollama Import
+# --------------------------------------------------
 try:
     import ollama
     OLLAMA_AVAILABLE = True
 except ImportError:
     OLLAMA_AVAILABLE = False
-    print("Warning: ollama not available, using rule-based triage only")
+    logger.warning("Ollama not available. Falling back to rule-based triage.")
 
+
+# --------------------------------------------------
+# Rule-Based Intent & Urgency
+# --------------------------------------------------
 INTENT_RULES = {
-    "refund": ["refund", "money back", "get my money"],
+    "refund": ["refund", "money back", "get my money", "cancel", "cancel order"],
     "return": ["return", "send back", "don't want"],
-    "exchange": ["exchange", "replace", "swap", "different size", "different color"],
-    "order_tracking": ["where is my order", "track", "order status", "hasn't arrived", "not received", "check status", "check my order", "status of order", "status for order"],
-    "complaint": ["bad", "worst", "terrible", "not happy", "angry", "disappointed", "poor quality"],
-    "technical_issue": ["not working", "error", "bug", "broken", "defective"],
+    "exchange": ["exchange", "replace", "swap"],
+    "order_tracking": ["where is my order", "track", "order status"],
+    "complaint": ["bad", "worst", "terrible", "angry"],
+    "technical_issue": ["not working", "error", "bug", "broken"],
 }
 
-URGENT_WORDS = ["urgent", "now", "immediately", "asap", "emergency", "right now"]
+URGENT_WORDS = ["urgent", "now", "immediately", "asap", "right now"]
 
 
+# --------------------------------------------------
+# Utility Functions
+# --------------------------------------------------
 def extract_order_id(text: str) -> str | None:
-    """Extract order ID after 'order' or 'id' keyword"""
-    match = re.search(r'(?:order\s*)?id\s*(\d+)', text, re.IGNORECASE)
+    match = re.search(r"(?:order\s*)?id\s*(\d+)", text, re.IGNORECASE)
     if match:
         return match.group(1)
 
-    # fallback: order 3456
-    match = re.search(r'order\s*(\d+)', text, re.IGNORECASE)
+    match = re.search(r"order\s*(\d+)", text, re.IGNORECASE)
     if match:
         return match.group(1)
 
     return None
 
 
-def rule_based_intent(text: str) -> str | None:
-    """Determine intent using keyword matching"""
+def rule_based_intent(text: str) -> str:
     text_lower = text.lower()
+
+    # 🔹 Detect policy / informational queries FIRST
+    if any(word in text_lower for word in ["policy", "policies", "rules", "how does", "what is", "what are"]):
+        return "general_question"
+
+    # 🔹 Then detect operational intents
     for intent, keywords in INTENT_RULES.items():
-        for keyword in keywords:
-            if keyword in text_lower:
-                return intent
-    return None
+        if any(keyword in text_lower for keyword in keywords):
+            return intent
+
+    return "general_question"
+
 
 
 def rule_based_urgency(text: str) -> str:
-    """Determine urgency using keyword matching"""
     text_lower = text.lower()
-    for word in URGENT_WORDS:
-        if word in text_lower:
-            return "high"
-    
-    # Check for complaint-related urgency
+    if any(word in text_lower for word in URGENT_WORDS):
+        return "high"
     if any(word in text_lower for word in ["angry", "terrible", "worst"]):
         return "high"
-    
     return "normal"
 
 
-def run_triage(message: str) -> dict:
-    """
-    Main triage function that analyzes user message.
-    Uses LLM if available, falls back to rules.
-    """
-    text = message.lower()
-    order_id = extract_order_id(message)
-    urgency = rule_based_urgency(text)
-    fallback_intent = rule_based_intent(text) or "unknown"
+def safe_json_parse(output: str) -> Dict[str, Any] | None:
+    try:
+        output = output.strip()
+        if "```" in output:
+            output = output.split("```")[1].strip()
+        return json.loads(output)
+    except Exception as e:
+        logger.error(f"JSON parsing failed: {e}")
+        return None
 
-    # If Ollama is not available, use rule-based only
+
+# --------------------------------------------------
+# Hybrid Triage Logic
+# --------------------------------------------------
+def run_triage(message: str) -> Dict[str, Any]:
+
+    order_id = extract_order_id(message)
+    fallback_intent = rule_based_intent(message)
+    fallback_urgency = rule_based_urgency(message)
+
     if not OLLAMA_AVAILABLE:
         return {
             "intent": fallback_intent,
-            "urgency": urgency,
+            "urgency": fallback_urgency,
             "order_id": order_id,
             "confidence": 0.60,
             "user_issue": message
         }
 
-    # Try to use LLM for better analysis
     try:
         prompt = TRIAGE_PROMPT.format(message=message)
+
         response = ollama.chat(
             model="mistral:instruct",
             messages=[{"role": "user", "content": prompt}],
-            options={"temperature": 0.1}  # Lower temperature for more consistent output
+            options={"temperature": 0.1}
         )
 
-        output = response.get("message", {}).get("content", "")
+        parsed = safe_json_parse(response.get("message", {}).get("content", ""))
 
-        # Try to parse JSON response
-        try:
-            # Clean up potential markdown formatting
-            if "```json" in output:
-                output = output.split("```json")[1].split("```")[0].strip()
-            elif "```" in output:
-                output = output.split("```")[1].split("```")[0].strip()
-            
-            result = json.loads(output)
-            
-            # Validate and fill in missing fields
-            result["order_id"] = result.get("order_id") or order_id
-            result["urgency"] = result.get("urgency") or urgency
-            result["intent"] = result.get("intent") or fallback_intent
-            result["confidence"] = result.get("confidence", 0.70)
-            result["user_issue"] = result.get("user_issue") or message
-            
-            return result
-            
-        except (json.JSONDecodeError, ValueError) as e:
-            print(f"Failed to parse LLM output as JSON: {e}")
-            # Fall back to rule-based
-            return {
-                "intent": fallback_intent,
-                "urgency": urgency,
-                "order_id": order_id,
-                "confidence": 0.50,
-                "user_issue": message
-            }
-            
+        if not parsed:
+            raise ValueError("Invalid JSON from LLM")
+
+        parsed["order_id"] = parsed.get("order_id") or order_id
+        parsed["intent"] = parsed.get("intent") or fallback_intent
+        parsed["urgency"] = parsed.get("urgency") or fallback_urgency
+        parsed["confidence"] = parsed.get("confidence", 0.75)
+        parsed["user_issue"] = parsed.get("user_issue", message)
+
+        return parsed
+
     except Exception as e:
-        print(f"LLM triage failed: {e}")
-        # Fall back to rule-based
+        logger.error(f"LLM triage failed: {e}")
         return {
             "intent": fallback_intent,
-            "urgency": urgency,
+            "urgency": fallback_urgency,
             "order_id": order_id,
             "confidence": 0.50,
             "user_issue": message
         }
 
 
+# --------------------------------------------------
+# Main Triage Agent
+# --------------------------------------------------
 @agent_guard("triage")
-async def triage_agent(state):
-    """
-    Triage Agent: Analyzes user message to determine intent, urgency, and extract entities.
-    """
-    print(f"\n🔍 TRIAGE AGENT: Processing message")
-    message = state.get("user_message") or ""
-    
+async def triage_agent(state: Dict[str, Any]) -> Dict[str, Any]:
+
+    logger.info("Processing new triage request")
+
+    message = state.get("user_message", "").strip()
+
     if not message:
-        print("❌ TRIAGE: Empty user message")
-        state["last_error"] = "Empty user message"
-        state["current_state"] = "HUMAN_HANDOFF"
+        state["reply"] = "Please provide your request."
+        state["current_state"] = "WAITING_FOR_INFO"
         return state
-    
-    # Run triage analysis
+
     result = run_triage(message)
-    print(f"✅ TRIAGE: Detected intent={result.get('intent')}, order_id={result.get('order_id')}")
 
-    # Update state with triage results
-    state["intent"] = result.get("intent")
-    state["urgency"] = result.get("urgency")
+    intent = result["intent"]
+    urgency = result["urgency"]
+    order_id = result.get("order_id")
+    confidence = result["confidence"]
 
-    # Initialize entities if not exists
+    state["intent"] = intent
+    state["urgency"] = urgency
     state.setdefault("entities", {})
-    
-    # Store extracted information
-    state["entities"]["query"] = message
-    
-    if result.get("order_id"):
-        state["entities"]["order_id"] = result["order_id"]
-    
-    if "confidence" in result:
-        state["entities"]["triage_confidence"] = result["confidence"]
-    
-    # Always store user_issue
-    state["entities"]["user_issue"] = result.get("user_issue", message)
+    state["entities"].update({
+        "query": message,
+        "user_issue": result["user_issue"],
+        "triage_confidence": confidence
+    })
 
-    # Create comprehensive triage summary for downstream agents
-    triage_summary = f"""Triage Analysis Summary:
-- Original Query: {message}
-- User Issue: {result.get("user_issue", message)}
-- Detected Intent: {result.get("intent")}
-- Urgency Level: {result.get("urgency", "normal")}
-- Order ID: {result.get("order_id") or "Not found"}
-- Confidence Score: {result.get("confidence", 0.50)}
+    if order_id:
+        state["entities"]["order_id"] = order_id
+
+    # --------------------------------------------------
+    # 1. General Conversational Handling
+    # --------------------------------------------------
+    if intent in ["general_question", "unknown"]:
+        if OLLAMA_AVAILABLE:
+            from app.agents.triage.prompts import CHAT_PROMPT
+
+            chat_prompt = CHAT_PROMPT.format(message=message)
+
+            response = ollama.chat(
+                model="mistral:instruct",
+                messages=[{"role": "user", "content": chat_prompt}],
+                options={"temperature": 0.3}
+            )
+
+            state["reply"] = response.get("message", {}).get("content", "").strip()
+        else:
+            state["reply"] = "I'm here to help. Could you provide more details?"
+
+        state["current_state"] = "COMPLETED"
+        return state
+
+    # --------------------------------------------------
+    # 2. Ask for Order ID ONLY if required
+    # --------------------------------------------------
+    order_required_intents = ["refund", "return", "exchange", "order_tracking"]
+
+    if intent in order_required_intents and not order_id:
+
+        if OLLAMA_AVAILABLE:
+            clarification_prompt = f"""
+You are a professional customer support assistant.
+
+The user wants to {intent}, but did not provide an order ID.
+Politely ask them to provide their order ID.
 """
-    
-    state["entities"]["triage_summary"] = triage_summary
 
-    # Move to next state
+            try:
+                response = ollama.chat(
+                    model="mistral:instruct",
+                    messages=[{"role": "user", "content": clarification_prompt}],
+                    options={"temperature": 0.3}
+                )
+
+                state["reply"] = response.get("message", {}).get("content", "").strip()
+
+            except Exception:
+                state["reply"] = "To assist you with this request, could you please provide your order ID?"
+        else:
+            state["reply"] = "To assist you with this request, could you please provide your order ID?"
+
+        state["current_state"] = "WAITING_FOR_INFO"
+        return state
+
+    # --------------------------------------------------
+    # 3. Complaint / Technical without ID
+    # --------------------------------------------------
+    if intent in ["complaint", "technical_issue"] and not order_id:
+
+        if OLLAMA_AVAILABLE:
+            complaint_prompt = f"""
+You are a helpful and empathetic customer support assistant.
+
+The user is reporting a {intent}.
+Respond empathetically and ask them to provide their order ID
+or additional details about the issue.
+"""
+
+            try:
+                response = ollama.chat(
+                    model="mistral:instruct",
+                    messages=[{"role": "user", "content": complaint_prompt}],
+                    options={"temperature": 0.3}
+                )
+
+                state["reply"] = response.get("message", {}).get("content", "").strip()
+
+            except Exception:
+                state["reply"] = (
+                    "I'm sorry to hear that. Could you please share your order ID "
+                    "or provide more details about the issue?"
+                )
+        else:
+            state["reply"] = (
+                "I'm sorry to hear that. Could you please share your order ID "
+                "or provide more details about the issue?"
+            )
+
+        state["current_state"] = "WAITING_FOR_INFO"
+        return state
+
+    # --------------------------------------------------
+    # 4. Route Only When Ready
+    # --------------------------------------------------
     state["current_state"] = "DATA_FETCH"
-    print(f"🔄 TRIAGE: Moving to DATA_FETCH state\n")
-    
     return state
