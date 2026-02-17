@@ -1,12 +1,13 @@
 from fpdf import FPDF
 import os
 from fastapi import Request
+from datetime import datetime
 
-# Set relative path to labels folder inside the repo
-# This works on any machine, no absolute local paths
-BASE_DIR = os.path.dirname(os.path.abspath(__file__)) 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FONT_PATH = os.path.join(BASE_DIR, "../../fonts/DejaVuSans.ttf")
 LABEL_DIR = os.path.join(BASE_DIR, "../../static/labels")
-os.makedirs(LABEL_DIR, exist_ok=True)  
+
+os.makedirs(LABEL_DIR, exist_ok=True)
 
 
 def generate_return_label(
@@ -16,76 +17,89 @@ def generate_return_label(
     message: str = None,
     request: Request = None
 ) -> str:
-    """
-    Generates a professional return label PDF with detailed information
-    and returns the URL path to access it via FastAPI.
-    
-    Args:
-        order_id (str): Unique order ID
-        product (str): Name of the product
-        size (int): Size of the product
-        message (str): Custom message for the return/exchange instructions
-        request (Request): FastAPI Request object to generate full URL
-    
-    Returns:
-        str: URL to access the generated PDF
-    """
+
     file_name = f"return_label_{order_id}.pdf"
     file_path = os.path.join(LABEL_DIR, file_name)
 
     pdf = FPDF(orientation='P', unit='mm', format='A4')
     pdf.add_page()
 
-    # Title
-    pdf.set_font("Arial", 'B', 18)
-    pdf.cell(0, 15, "RETURN / EXCHANGE LABEL", ln=True, align="C")
-    pdf.ln(10)
+    # ✅ Unicode Font
+    pdf.add_font("DejaVu", "", FONT_PATH, uni=True)
+    pdf.set_font("DejaVu", size=12)
 
-    # Order Details Box
-    pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, "Order Details:", ln=True)
-    pdf.set_font("Arial", '', 12)
-    pdf.cell(0, 8, f"Order ID: {order_id}", ln=True)
+    # ---------------- HEADER ----------------
+    pdf.set_fill_color(240, 240, 240)
+    pdf.rect(10, 10, 190, 25, 'F')
+
+    pdf.set_y(15)
+    pdf.set_font("DejaVu", size=18)
+    pdf.cell(0, 10, "RETURN / EXCHANGE AUTHORIZATION", ln=True, align="C")
+
+    pdf.set_font("DejaVu", size=10)
+    pdf.cell(0, 5, "Please include this document inside your package.", ln=True, align="C")
+    pdf.ln(15)
+
+    # ---------------- ORDER INFO ----------------
+    pdf.set_font("DejaVu", size=13)
+    pdf.cell(0, 10, "1. ORDER INFORMATION", ln=True)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(3)
+
+    def add_row(label, value):
+        pdf.set_font("DejaVu", size=11)
+        pdf.cell(50, 10, f"{label}", border=1)
+        pdf.cell(140, 10, f"{value}", border=1, ln=True)
+
+    add_row("Order ID", f"#{order_id}")
+
     if product:
-        pdf.cell(0, 8, f"Product: {product}", ln=True)
-    if size:
-        pdf.cell(0, 8, f"Size: {size}", ln=True)
-    
-    pdf.ln(5)
+        add_row("Product Name", product)
 
-    # Instructions Box
-    pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, "Instructions:", ln=True)
-    pdf.set_font("Arial", '', 12)
-    if message:
-        pdf.multi_cell(0, 8, message)
-    else:
-        pdf.multi_cell(
-            0, 8,
-            "Please attach this label securely to the product package.\n"
-            "Present this label to your delivery partner who will collect the item for exchange.\n"
-            "Your replacement product will be shipped once the returned item is received and inspected.\n"
-            "Keep this label safe until the exchange is completed."
-        )
+    if size:
+        add_row("Product Size", str(size))
+
     
+
     pdf.ln(10)
 
-    # Footer / Thank you note
-    pdf.set_font("Arial", 'I', 11)
-    pdf.multi_cell(
-        0, 6,
-        "Thank you for shopping with us!\n"
-        "For any questions, please contact our customer service center."
-    )
+    # ---------------- INSTRUCTIONS ----------------
+    pdf.set_font("DejaVu", size=13)
+    pdf.cell(0, 10, "2. RETURN INSTRUCTIONS", ln=True)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(4)
 
-    # Save PDF
+    pdf.set_font("DejaVu", size=11)
+
+    if message:
+        pdf.multi_cell(0, 7, message)
+    else:
+        instructions = [
+            "• PACKING: Ensure product is in original box with tags.",
+            "• LABELING: Attach this label outside shipping box.",
+            "• HANDOVER: Give package to delivery agent.",
+            "• INSPECTION: Replacement ships after quality check."
+        ]
+        for line in instructions:
+            pdf.cell(0, 8, line, ln=True)
+
+    pdf.ln(20)
+
+    # ---------------- FOOTER ----------------
+    pdf.set_y(-40)
+    pdf.set_font("DejaVu", size=11)
+    pdf.cell(0, 8, "Need Help?", ln=True, align="C")
+
+    pdf.set_font("DejaVu", size=10)
+    footer_text = (
+        "Thank you for shopping with us!\n"
+        "Contact support if you need assistance."
+    )
+    pdf.multi_cell(0, 6, footer_text, align="C")
+
     pdf.output(file_path)
 
     # Return URL for FastAPI
     if request:
-        # full URL accessible from browser
         return f"{request.base_url}labels/{file_name}"
-    else:
-        # fallback: return relative path
-        return file_name
-
+    return file_name

@@ -11,3 +11,4 @@ class ResolutionInput(BaseModel):
     exchange_allowed: Optional[bool] = None  # From policy agent
     cancel_allowed: Optional[bool] = None    # From policy agent
     reason: Optional[str] = None    # Reason/explanation from policy agent
+    status: Optional[str] = None
