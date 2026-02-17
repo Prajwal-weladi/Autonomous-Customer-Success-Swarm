@@ -3,6 +3,9 @@ import json
 from ...core.llm.prompt import get_llm_prompt
 from ...core.services.return_label_service import generate_return_label
 from app.agents.resolution.app.schemas.model import ResolutionInput
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def run_agent_llm(data: ResolutionInput) -> dict:
@@ -11,6 +14,7 @@ def run_agent_llm(data: ResolutionInput) -> dict:
     Handles exchange, cancel, refund, order tracking,
     complaints, and technical issues.
     """
+    logger.info(f"🤖 RESOLUTION LLM: Processing resolution for order_id={data.order_id}, intent={data.intent}")
 
     intent = (data.intent or "").lower()
 
@@ -18,11 +22,14 @@ def run_agent_llm(data: ResolutionInput) -> dict:
     product_name = data.product or "the product"
     size_value = data.size if data.size not in [None, 0, "0"] else "N/A"
     order_status = getattr(data, "status", "processing")
+    
+    logger.debug(f"Product: {product_name}, Size: {size_value}, Status: {order_status}")
 
     # ----------------- DIRECT INTENTS -----------------
 
     # 1️⃣ Order Tracking
     if intent == "order_tracking":
+        logger.info("Processing order tracking request")
         return {
             "action": "order_tracking",
             "message": (
@@ -39,6 +46,7 @@ def run_agent_llm(data: ResolutionInput) -> dict:
 
     # 2️⃣ Complaint
     if intent == "complaint":
+        logger.info("Processing complaint")
         return {
             "action": "complaint",
             "message": (
@@ -54,6 +62,7 @@ def run_agent_llm(data: ResolutionInput) -> dict:
 
     # 3️⃣ Technical Issue
     if intent == "technical_issue":
+        logger.info("Processing technical issue")
         return {
             "action": "technical_issue",
             "message": (
@@ -71,6 +80,7 @@ def run_agent_llm(data: ResolutionInput) -> dict:
 
     # Cancel/Refund not allowed
     if intent in ["cancel", "refund"] and not data.cancel_allowed:
+        logger.warning(f"Refund/Cancel denied for order {data.order_id}: {data.reason}")
         return {
             "action": "deny",
             "message": (
@@ -85,6 +95,7 @@ def run_agent_llm(data: ResolutionInput) -> dict:
 
     # Exchange/Return not allowed
     if intent in ["exchange", "return"] and not data.exchange_allowed:
+        logger.warning(f"Exchange/Return denied for order {data.order_id}: {data.reason}")
         return {
             "action": "deny",
             "message": (
@@ -101,11 +112,13 @@ def run_agent_llm(data: ResolutionInput) -> dict:
 
     # Exchange / Return
     if intent in ["exchange", "return"] and data.exchange_allowed:
+        logger.info(f"Processing exchange/return for order {data.order_id}")
         file_name = generate_return_label(
             data.order_id,
             product=product_name,
             size=data.size
         )
+        logger.info(f"Generated return label: {file_name}")
 
         return {
             "action": "exchange",
@@ -126,6 +139,7 @@ def run_agent_llm(data: ResolutionInput) -> dict:
 
     # Cancel / Refund
     if intent in ["cancel", "refund"] and data.cancel_allowed:
+        logger.info(f"Processing refund/cancellation for order {data.order_id}, amount: {data.amount}")
         return {
             "action": "cancel",
             "message": (
@@ -139,7 +153,7 @@ def run_agent_llm(data: ResolutionInput) -> dict:
         }
 
     # ----------------- DEFAULT FALLBACK -----------------
-
+    logger.warning(f"Unable to process intent '{intent}' for order {data.order_id}")
     return {
         "action": "deny",
         "message": (

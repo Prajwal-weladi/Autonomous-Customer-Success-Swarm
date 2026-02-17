@@ -1,45 +1,64 @@
 from langgraph.graph import StateGraph, END
 from app.orchestrator.state import ConversationState
+from app.utils.logger import get_logger
 
 from app.agents.triage.agent import triage_agent
 from app.agents.database.agent import database_agent
 from app.agents.policy.agent import policy_agent
 from app.agents.resolution.agent import resolution_agent
 
+logger = get_logger(__name__)
+
 
 def should_continue_to_database(state) -> str:
     """Route from triage to database or handoff"""
-    if state.get("current_state") == "HUMAN_HANDOFF":
+    current_state = state.get("current_state")
+    if current_state == "HUMAN_HANDOFF":
+        logger.info("🔀 Routing: triage → END (handoff)")
         return "end"
-    if state.get("current_state") == "DATA_FETCH":
+    if current_state == "DATA_FETCH":
+        logger.info("🔀 Routing: triage → database")
         return "database"
+    logger.warning(f"🔀 Routing: triage → END (unexpected state: {current_state})")
     return "end"
 
 
 def should_continue_to_policy(state) -> str:
     """Route from database to policy or handoff"""
-    if state.get("current_state") == "HUMAN_HANDOFF":
+    current_state = state.get("current_state")
+    if current_state == "HUMAN_HANDOFF":
+        logger.info("🔀 Routing: database → END (handoff)")
         return "end"
-    if state.get("current_state") == "POLICY_CHECK":
+    if current_state == "POLICY_CHECK":
+        logger.info("🔀 Routing: database → policy")
         return "policy"
+    logger.warning(f"🔀 Routing: database → END (unexpected state: {current_state})")
     return "end"
 
 
 def should_continue_to_resolution(state) -> str:
     """Route from policy to resolution or handoff"""
-    if state.get("current_state") == "HUMAN_HANDOFF":
+    current_state = state.get("current_state")
+    if current_state == "HUMAN_HANDOFF":
+        logger.info("🔀 Routing: policy → END (handoff)")
         return "end"
-    if state.get("current_state") == "RESOLUTION":
+    if current_state == "RESOLUTION":
+        logger.info("🔀 Routing: policy → resolution")
         return "resolution"
+    logger.warning(f"🔀 Routing: policy → END (unexpected state: {current_state})")
     return "end"
 
 
 def should_end(state) -> str:
     """Route from resolution to end"""
-    if state.get("current_state") == "COMPLETED":
+    current_state = state.get("current_state")
+    if current_state == "COMPLETED":
+        logger.info("🔀 Routing: resolution → END (completed)")
         return "end"
-    if state.get("current_state") == "HUMAN_HANDOFF":
+    if current_state == "HUMAN_HANDOFF":
+        logger.info("🔀 Routing: resolution → END (handoff)")
         return "end"
+    logger.info("🔀 Routing: resolution → END")
     return "end"
 
 

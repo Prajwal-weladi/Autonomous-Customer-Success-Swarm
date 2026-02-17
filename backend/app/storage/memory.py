@@ -2,6 +2,9 @@
 In-memory conversation state storage.
 For production, replace with Redis, PostgreSQL, or other persistent storage.
 """
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 _STORE = {}
 
@@ -16,7 +19,13 @@ def load_state(conversation_id: str):
     Returns:
         dict: Conversation state or None if not found
     """
-    return _STORE.get(conversation_id)
+    logger.debug(f"📂 MEMORY: Loading state for conversation {conversation_id}")
+    state = _STORE.get(conversation_id)
+    if state:
+        logger.info(f"✅ MEMORY: State found for {conversation_id}")
+    else:
+        logger.info(f"ℹ️ MEMORY: No existing state for {conversation_id}")
+    return state
 
 
 def save_state(conversation_id: str, state):
@@ -27,7 +36,9 @@ def save_state(conversation_id: str, state):
         conversation_id: Unique identifier for the conversation
         state: Conversation state dict to save
     """
+    logger.debug(f"💾 MEMORY: Saving state for conversation {conversation_id}")
     _STORE[conversation_id] = state
+    logger.info(f"✅ MEMORY: State saved for {conversation_id}")
 
 
 def clear_state(conversation_id: str):
@@ -37,8 +48,12 @@ def clear_state(conversation_id: str):
     Args:
         conversation_id: Unique identifier for the conversation
     """
+    logger.debug(f"🗑️ MEMORY: Clearing state for conversation {conversation_id}")
     if conversation_id in _STORE:
         del _STORE[conversation_id]
+        logger.info(f"✅ MEMORY: State cleared for {conversation_id}")
+    else:
+        logger.warning(f"⚠️ MEMORY: No state to clear for {conversation_id}")
 
 
 def get_all_conversations():
@@ -48,4 +63,6 @@ def get_all_conversations():
     Returns:
         list: List of conversation IDs
     """
-    return list(_STORE.keys())
+    conversations = list(_STORE.keys())
+    logger.debug(f"📋 MEMORY: {len(conversations)} conversations in storage")
+    return conversations

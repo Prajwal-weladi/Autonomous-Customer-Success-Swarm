@@ -12,6 +12,14 @@ def format_resolution_message(pipeline_response: dict) -> str:
     action = resolution.get("action", "unknown").upper()
     message_lines = []
     
+    # SPECIAL CASE: Awaiting input (order ID, confirmation, etc.)
+    if action in ["AWAITING_ORDER_ID", "AWAITING_CONFIRMATION", "GENERAL_CONVERSATION", "POLICY_INFO"]:
+        # For these cases, just return the message without extra formatting
+        agent_message = resolution.get("message", "")
+        if agent_message:
+            return agent_message
+        return "I'm here to help! How can I assist you today?"
+    
     # Main action message
     agent_message = resolution.get("message", "")
     if agent_message:

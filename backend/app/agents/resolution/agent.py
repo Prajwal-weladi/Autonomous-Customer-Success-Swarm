@@ -1,4 +1,7 @@
 from app.orchestrator.guard import agent_guard
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def generate_refund_response(state) -> str:
@@ -87,6 +90,27 @@ def generate_technical_issue_response(state) -> str:
     return "I understand you're experiencing a technical issue. I've logged this problem with our technical support team. They'll investigate and reach out to you within 4 hours. In the meantime, have you tried restarting your device or clearing your browser cache?"
 
 
+def generate_cancellation_response(state) -> str:
+    """Generate response for cancellation requests"""
+    order_details = state["entities"].get("order_details", {})
+    
+    if not order_details:
+        return "I couldn't find your order details. Please verify your order number and try again, or I can connect you with a specialist."
+    
+    order_id = order_details.get("order_id")
+    product = order_details.get("product")
+    status = order_details.get("status")
+    
+    # Check if order can be cancelled
+    if status in ["Delivered", "Shipped"]:
+        return f"I'm sorry, but Order #{order_id} ({product}) has already been {status.lower()}. Orders can only be cancelled before they ship. However, you can request a return or refund instead. Would you like me to help with that?"
+    elif status == "Cancelled":
+        return f"Order #{order_id} has already been cancelled. Is there anything else I can help you with?"
+    else:
+        # Order can be cancelled
+        return f"Your cancellation request for Order #{order_id} ({product}) has been processed successfully. The order has been cancelled and you will not be charged. You'll receive a confirmation email shortly. Is there anything else I can help you with?"
+
+
 @agent_guard("resolution")
 async def resolution_agent(state):
     """
@@ -102,25 +126,41 @@ async def resolution_agent(state):
         - state["status"] to "completed"
         - state["current_state"] to "COMPLETED"
     """
+    logger.info("🚀 RESOLUTION AGENT: Generating final response")
+    
     intent = state.get("intent", "unknown")
+    policy_result = state.get("entities", {}).get("policy_result", {})
+    
+    logger.debug(f"Intent: {intent}, Policy allowed: {policy_result.get('allowed')}")
     
     # Generate response based on intent
     if intent == "refund":
+        logger.info("Generating refund response")
         reply = generate_refund_response(state)
     elif intent == "return":
+        logger.info("Generating return response")
         reply = generate_return_response(state)
     elif intent == "exchange":
+        logger.info("Generating exchange response")
         reply = generate_exchange_response(state)
+    elif intent == "cancel":
+        logger.info("Generating cancellation response")
+        reply = generate_cancellation_response(state)
     elif intent == "order_tracking":
+        logger.info("Generating tracking response")
         reply = generate_tracking_response(state)
     elif intent == "complaint":
+        logger.info("Generating complaint response")
         reply = generate_complaint_response(state)
     elif intent == "technical_issue":
+        logger.info("Generating technical issue response")
         reply = generate_technical_issue_response(state)
     elif intent == "general_question":
+        logger.info("Generating general response")
         reply = generate_general_response(state)
     else:
         # Unknown intent
+        logger.warning(f"Unknown intent '{intent}' - escalating to human")
         reply = "I'm not quite sure how to help with that. Let me connect you with a human agent who can better assist you."
         state["current_state"] = "HUMAN_HANDOFF"
         state["status"] = "handoff"
@@ -131,5 +171,8 @@ async def resolution_agent(state):
     state["reply"] = reply
     state["status"] = "completed"
     state["current_state"] = "COMPLETED"
+    
+    logger.info(f"✅ RESOLUTION: Response generated successfully")
+    logger.debug(f"Reply preview: {reply[:100]}...")
     
     return state
