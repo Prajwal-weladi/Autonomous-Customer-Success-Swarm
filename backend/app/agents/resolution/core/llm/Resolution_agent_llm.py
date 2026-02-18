@@ -18,7 +18,7 @@ def run_agent_llm(data: ResolutionInput) -> dict:
     # ✅ SAFE FALLBACKS (VERY IMPORTANT)
     product_name = data.product or "the product"
     size_value = data.size if data.size not in [None, 0, "0"] else "N/A"
-    order_status = getattr(data, "status", "processing")
+    order_status = getattr(data, "status", None) or "processing"
     
     logger.debug(f"Product: {product_name}, Size: {size_value}, Status: {order_status}")
 

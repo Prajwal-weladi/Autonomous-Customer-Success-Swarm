@@ -332,58 +332,69 @@ async def run_pipeline(req: MessageRequest):
         if previous_state.get("awaiting_order_id"):
             print(f"\n🔄 AWAITING ORDER ID - Checking if user provided it")
             
-            # Quick triage to extract order ID
-            quick_triage = run_triage(req.message)
-            extracted_order_id = quick_triage.get("order_id")
-            
-            if extracted_order_id:
-                # User provided order ID - reconstruct the original request
+            # ✅ FIRST: Check if we already have an order_id saved from earlier in the conversation
+            saved_order_id = previous_entities.get("order_id")
+            if saved_order_id:
+                logger.info(f"✅ Found saved order_id from earlier in conversation: {saved_order_id}")
                 original_intent = previous_state.get("intent")
-                print(f"✅ ORDER ID PROVIDED: {extracted_order_id} - Processing {original_intent} request")
-                
-                # Update the message to include the intent and order ID
-                req.message = f"{original_intent} order {extracted_order_id}"
-                
-                # Clear the awaiting state
+                req.message = f"{original_intent} order {saved_order_id}"
                 previous_state["awaiting_order_id"] = False
                 save_state(req.conversation_id, previous_state)
-                
                 # Continue with normal pipeline processing below
             else:
-                # User didn't provide order ID - ask again
-                print(f"⚠️ ORDER ID NOT PROVIDED - Asking again")
+                # Try to extract order ID from current message
+                quick_triage = run_triage(req.message)
+                extracted_order_id = quick_triage.get("order_id")
                 
-                return PipelineResponse(
-                    conversation_id=req.conversation_id,
-                    message=req.message,
-                    triage_output=TriageOutput(
-                        intent=previous_state.get("intent", "unknown"),
-                        urgency="normal",
-                        order_id=None,
-                        user_issue=req.message,
-                        confidence=0.5
-                    ),
-                    database_output=DatabaseOutput(
-                        order_found=False,
-                        order_details=None,
-                        error="Order ID still not provided"
-                    ),
-                    policy_output=PolicyOutput(
-                        policy_type=None,
-                        allowed=False,
-                        reason="Order ID required to proceed",
-                        policy_checked=False
-                    ),
-                    resolution_output=ResolutionOutput(
-                        action="awaiting_order_id",
-                        message="I didn't catch an order ID in your message. Could you please provide your Order ID? It should be a number like 12345.",
-                        return_label_url=None,
-                        refund_amount=None,
-                        status="awaiting_input",
-                        reason="Order ID required"
-                    ),
-                    status="awaiting_input"
-                )
+                if extracted_order_id:
+                    # User provided order ID - reconstruct the original request
+                    original_intent = previous_state.get("intent")
+                    print(f"✅ ORDER ID PROVIDED: {extracted_order_id} - Processing {original_intent} request")
+                    
+                    # Update the message to include the intent and order ID
+                    req.message = f"{original_intent} order {extracted_order_id}"
+                    
+                    # Save the order_id into entities so it persists for future turns
+                    previous_state["awaiting_order_id"] = False
+                    previous_state.setdefault("entities", {})["order_id"] = extracted_order_id
+                    save_state(req.conversation_id, previous_state)
+                    
+                    # Continue with normal pipeline processing below
+                else:
+                    # User didn't provide order ID - ask again
+                    print(f"⚠️ ORDER ID NOT PROVIDED - Asking again")
+                    
+                    return PipelineResponse(
+                        conversation_id=req.conversation_id,
+                        message=req.message,
+                        triage_output=TriageOutput(
+                            intent=previous_state.get("intent", "unknown"),
+                            urgency="normal",
+                            order_id=None,
+                            user_issue=req.message,
+                            confidence=0.5
+                        ),
+                        database_output=DatabaseOutput(
+                            order_found=False,
+                            order_details=None,
+                            error="Order ID still not provided"
+                        ),
+                        policy_output=PolicyOutput(
+                            policy_type=None,
+                            allowed=False,
+                            reason="Order ID required to proceed",
+                            policy_checked=False
+                        ),
+                        resolution_output=ResolutionOutput(
+                            action="awaiting_order_id",
+                            message="I didn't catch an order ID in your message. Could you please provide your Order ID? It should be a number like 12345.",
+                            return_label_url=None,
+                            refund_amount=None,
+                            status="awaiting_input",
+                            reason="Order ID required"
+                        ),
+                        status="awaiting_input"
+                    )
 
         # Step 1: TRIAGE - Extract intent, urgency, order_id
         print(f"\n📋 STEP 1: TRIAGE - Analyzing message: '{req.message}'")
@@ -671,6 +682,7 @@ async def run_pipeline(req: MessageRequest):
                     product=product_name,
                     size=order_details.get("size"),
                     amount=order_details.get("amount"),
+                    status=order_details.get("status") or order_details.get("order_status"),
                     exchange_allowed=policy_output.allowed if policy_output.policy_type in ["exchange", "return"] else None,
                     cancel_allowed=policy_output.allowed if policy_output.policy_type in ["refund", "cancel"] else None,
                     reason=policy_output.reason if not policy_output.allowed else None

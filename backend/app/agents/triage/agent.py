@@ -26,13 +26,35 @@ URGENT_WORDS = ["urgent", "now", "immediately", "asap", "emergency", "right now"
 
 
 def extract_order_id(text: str) -> str | None:
-    """Extract order ID after 'order' or 'id' keyword"""
-    match = re.search(r'(?:order\s*)?id\s*(\d+)', text, re.IGNORECASE)
+    """Extract order ID from various natural language patterns"""
+    
+    # Pattern 1: "order id is 12345" / "order id: 12345" / "order id 12345"
+    match = re.search(r'order\s*id\s*(?:is|:)?\s*#?(\d+)', text, re.IGNORECASE)
     if match:
         return match.group(1)
 
-    # fallback: order 3456
-    match = re.search(r'order\s*(\d+)', text, re.IGNORECASE)
+    # Pattern 2: "my id is 12345" / "id is 12345" / "id: 12345"
+    match = re.search(r'\bid\s*(?:is|:)?\s*#?(\d+)', text, re.IGNORECASE)
+    if match:
+        return match.group(1)
+
+    # Pattern 3: "order 12345" / "order #12345"
+    match = re.search(r'order\s*#?(\d+)', text, re.IGNORECASE)
+    if match:
+        return match.group(1)
+
+    # Pattern 4: "#12345"
+    match = re.search(r'#(\d+)', text)
+    if match:
+        return match.group(1)
+
+    # Pattern 5: "it's 12345" / "it is 12345" / "the number is 12345"
+    match = re.search(r"(?:it'?s|it is|number is|is)\s+#?(\d{4,})", text, re.IGNORECASE)
+    if match:
+        return match.group(1)
+
+    # Pattern 6: bare long number (5+ digits) — likely an order ID
+    match = re.search(r'\b(\d{5,})\b', text)
     if match:
         return match.group(1)
 
