@@ -1,7 +1,7 @@
 from fpdf import FPDF
 import os
 from fastapi import Request
-from datetime import datetime
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FONT_PATH = os.path.join(BASE_DIR, "../../fonts/DejaVuSans.ttf")

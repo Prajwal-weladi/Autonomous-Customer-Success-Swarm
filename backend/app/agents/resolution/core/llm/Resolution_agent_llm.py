@@ -1,6 +1,3 @@
-from ollama import chat
-import json
-from ...core.llm.prompt import get_llm_prompt
 from ...core.services.return_label_service import generate_return_label
 from app.agents.resolution.app.schemas.model import ResolutionInput
 from app.utils.logger import get_logger
@@ -92,15 +89,14 @@ def run_agent_llm(data: ResolutionInput) -> dict:
             "refund_amount": None,
             "reason": data.reason
         }
+# ----------------- RETURN CHECK -----------------
 
-    # Exchange/Return not allowed
-    if intent in ["exchange", "return"] and not data.exchange_allowed:
-        logger.warning(f"Exchange/Return denied for order {data.order_id}: {data.reason}")
+    if intent == "return" and not data.exchange_allowed:
         return {
-            "action": "deny",
+            "action": "return_deny",
             "message": (
-                f"❌ Exchange Not Allowed\n\n"
-                f"Order **#{data.order_id}** is not eligible.\n"
+                f"❌ Return Not Allowed\n\n"
+                f"Order **#{data.order_id}** is not eligible for return.\n"
                 f"Reason: {data.reason}"
             ),
             "return_label_url": None,
@@ -108,17 +104,50 @@ def run_agent_llm(data: ResolutionInput) -> dict:
             "reason": data.reason
         }
 
-    # ----------------- MAIN ACTION LOGIC -----------------
-
-    # Exchange / Return
-    if intent in ["exchange", "return"] and data.exchange_allowed:
-        logger.info(f"Processing exchange/return for order {data.order_id}")
+    if intent == "return" and data.exchange_allowed:
         file_name = generate_return_label(
             data.order_id,
             product=product_name,
             size=data.size
         )
-        logger.info(f"Generated return label: {file_name}")
+
+        return {
+            "action": "return",
+            "message": (
+                f"✅ Your return request has been approved!\n\n"
+                f"📦 Product: {product_name}\n"
+                f"🔢 Order ID: {data.order_id}\n"
+                f"📏 Size: {size_value}\n\n"
+                f"📄 A prepaid return label has been generated.\n"
+                f"Please print the label and ship the item back.\n"
+                f"💰 Refund will be processed after inspection."
+            ),
+            "return_label_url": f"http://localhost:8000/labels/{file_name}",
+            "refund_amount": None,
+            "reason": None
+        }
+
+    # ----------------- EXCHANGE CHECK -----------------
+
+    if intent == "exchange" and not data.exchange_allowed:
+        return {
+            "action": "exchange_deny",
+            "message": (
+                f"❌ Exchange Not Allowed\n\n"
+                f"Order **#{data.order_id}** is not eligible for exchange.\n"
+                f"Reason: {data.reason}"
+            ),
+            "return_label_url": None,
+            "refund_amount": None,
+            "reason": data.reason
+        }
+
+    if intent == "exchange" and data.exchange_allowed:
+        file_name = generate_return_label(
+            data.order_id,
+            product=product_name,
+            size=data.size
+        )
 
         return {
             "action": "exchange",
@@ -128,14 +157,14 @@ def run_agent_llm(data: ResolutionInput) -> dict:
                 f"🔢 Order ID: {data.order_id}\n"
                 f"📏 Size: {size_value}\n\n"
                 f"📄 A prepaid return label has been generated.\n"
-                f"Please print the label, attach it to your package,\n"
-                f"and ship it back using any courier service.\n\n"
-                f"🔁 Once we receive the item, your replacement will be processed."
+                f"Please send the original item back.\n"
+                f"🔁 Once received, we will ship your replacement item."
             ),
             "return_label_url": f"http://localhost:8000/labels/{file_name}",
             "refund_amount": None,
             "reason": None
         }
+
 
     # Cancel / Refund
     if intent in ["cancel", "refund"] and data.cancel_allowed:

@@ -6,7 +6,8 @@ STAGES = {
     "DELIVERED": "appointmentscheduled",
     "EXCHANGED": "qualifiedtobuy",
     "CANCELLED": "3071652573",
-    "REFUND_DONE": "presentationscheduled"
+    "REFUND_DONE": "presentationscheduled",
+    "RETURNED": "3171778267"
 }
 
 def get_stage_transition(intent: str):
@@ -15,12 +16,15 @@ def get_stage_transition(intent: str):
     """
     intent = intent.lower()
 
-    if intent == "exchange" or intent == "return":
+    if intent == "exchange":
         return ["EXCHANGED"]
 
     if intent == "cancel" or intent == "refund":
         # sequential transitions
         return ["CANCELLED", "REFUND_DONE"]
+
+    if intent == "return":
+        return ["RETURNED"]
 
     return []
 
