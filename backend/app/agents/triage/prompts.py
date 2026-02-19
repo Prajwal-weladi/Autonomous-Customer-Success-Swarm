@@ -43,5 +43,11 @@ CRITICAL RULES FOR order_id:
 
 Important: For user_issue field, analyze the sentiment and core problem in the user's message. Extract what specific issue or complaint the user is facing in 1-2 clear, concise sentences.
 
-User message: {message}
+IMPORTANT: Use the conversation history below to understand the context of the current message.
+For example, if the user previously asked about order tracking and now sends only a number, that number is likely the order ID.
+
+Conversation history (oldest first):
+{history}
+
+Current user message: {message}
 """

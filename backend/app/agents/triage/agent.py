@@ -85,18 +85,35 @@ def rule_based_urgency(text: str) -> str:
     return "normal"
 
 
-def run_triage(message: str) -> dict:
+def run_triage(message: str, history: list | None = None) -> dict:
     """
     Main triage function that analyzes user message.
     Uses LLM if available, falls back to rules.
+
+    Args:
+        message: The current user message.
+        history: Optional list of prior turns as [{"role": "user"|"assistant", "content": "..."}, ...]
     """
     from app.utils.logger import get_logger
     logger = get_logger(__name__)
     
     logger.info(f"🔍 TRIAGE: Analyzing message: '{message[:100]}...'")
-    
-    text = message.lower()
-    order_id = extract_order_id(message)
+
+    # Build history string for the prompt
+    history_text = ""
+    if history:
+        lines = []
+        for turn in history:
+            role = turn.get("role", "user")
+            content = turn.get("content", "")
+            lines.append(f"{role}: {content}")
+        history_text = "\n".join(lines)
+
+    # For rule-based extraction also consider prior context (e.g. bare order ID reply)
+    full_context = f"{history_text}\n{message}" if history_text else message
+
+    text = full_context.lower()
+    order_id = extract_order_id(message) or extract_order_id(full_context)
     urgency = rule_based_urgency(text)
     fallback_intent = rule_based_intent(text) or "unknown"
     
@@ -116,7 +133,7 @@ def run_triage(message: str) -> dict:
     # Try to use LLM for better analysis
     try:
         logger.debug("Attempting LLM-based triage analysis")
-        prompt = TRIAGE_PROMPT.format(message=message)
+        prompt = TRIAGE_PROMPT.format(message=message, history=history_text or "(no prior history)")
         response = ollama.chat(
             model="qwen2.5:0.5b",
             messages=[{"role": "user", "content": prompt}],

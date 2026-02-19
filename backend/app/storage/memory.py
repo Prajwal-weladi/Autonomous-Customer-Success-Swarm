@@ -7,6 +7,7 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 _STORE = {}
+_HISTORY: dict[str, list[dict]] = {}  # conversation_id -> [{role, content}, ...]
 
 
 def load_state(conversation_id: str):
@@ -66,3 +67,33 @@ def get_all_conversations():
     conversations = list(_STORE.keys())
     logger.debug(f"📋 MEMORY: {len(conversations)} conversations in storage")
     return conversations
+
+
+def get_history(conversation_id: str) -> list[dict]:
+    """
+    Return the message history for a conversation.
+
+    Returns:
+        list of dicts with 'role' ('user' | 'assistant') and 'content' keys.
+    """
+    return _HISTORY.get(conversation_id, [])
+
+
+def append_to_history(conversation_id: str, role: str, content: str, max_turns: int = 20):
+    """
+    Append a single turn to the conversation history.
+    Caps the stored history at *max_turns* messages (oldest dropped first).
+
+    Args:
+        conversation_id: Unique identifier for the conversation
+        role: 'user' or 'assistant'
+        content: The message text
+        max_turns: Maximum number of messages to retain (default 20)
+    """
+    if conversation_id not in _HISTORY:
+        _HISTORY[conversation_id] = []
+    _HISTORY[conversation_id].append({"role": role, "content": content})
+    # Trim to avoid unbounded growth
+    if len(_HISTORY[conversation_id]) > max_turns:
+        _HISTORY[conversation_id] = _HISTORY[conversation_id][-max_turns:]
+    logger.debug(f"📝 MEMORY: History updated for {conversation_id} ({len(_HISTORY[conversation_id])} turns)")

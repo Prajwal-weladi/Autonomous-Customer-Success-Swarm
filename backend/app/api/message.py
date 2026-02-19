@@ -9,7 +9,7 @@ from app.agents.resolution.core.llm.Resolution_agent_llm import run_agent_llm
 from app.agents.resolution.app.schemas.model import ResolutionInput
 from app.agents.resolution.crm.stage_manager import get_stage_transition, STAGES, PIPELINE_ID
 from app.agents.resolution.crm.hubspot_client import update_deal_stage
-from app.storage.memory import load_state, save_state
+from app.storage.memory import load_state, save_state, get_history, append_to_history
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -322,6 +322,12 @@ async def run_pipeline(req: MessageRequest):
         # Load prior conversation context for continuity
         previous_state = load_state(req.conversation_id) or {}
         previous_entities = previous_state.get("entities", {})
+
+        # Load full conversation history for LLM context
+        history = get_history(req.conversation_id)
+        
+        # Record the incoming user message into history immediately
+        append_to_history(req.conversation_id, "user", req.message)
         
         logger.info(f"📂 Loaded previous state for {req.conversation_id}")
         logger.debug(f"Previous entities: {previous_entities}")
@@ -343,7 +349,7 @@ async def run_pipeline(req: MessageRequest):
                 # Continue with normal pipeline processing below
             else:
                 # Try to extract order ID from current message
-                quick_triage = run_triage(req.message)
+                quick_triage = run_triage(req.message, history=history)
                 extracted_order_id = quick_triage.get("order_id")
                 
                 if extracted_order_id:
@@ -363,7 +369,8 @@ async def run_pipeline(req: MessageRequest):
                 else:
                     # User didn't provide order ID - ask again
                     print(f"⚠️ ORDER ID NOT PROVIDED - Asking again")
-                    
+                    _reply = "I didn't catch an order ID in your message. Could you please provide your Order ID? It should be a number like 12345."
+                    append_to_history(req.conversation_id, "assistant", _reply)
                     return PipelineResponse(
                         conversation_id=req.conversation_id,
                         message=req.message,
@@ -387,7 +394,7 @@ async def run_pipeline(req: MessageRequest):
                         ),
                         resolution_output=ResolutionOutput(
                             action="awaiting_order_id",
-                            message="I didn't catch an order ID in your message. Could you please provide your Order ID? It should be a number like 12345.",
+                            message=_reply,
                             return_label_url=None,
                             refund_amount=None,
                             status="awaiting_input",
@@ -398,7 +405,7 @@ async def run_pipeline(req: MessageRequest):
 
         # Step 1: TRIAGE - Extract intent, urgency, order_id
         print(f"\n📋 STEP 1: TRIAGE - Analyzing message: '{req.message}'")
-        triage_result = run_triage(req.message)
+        triage_result = run_triage(req.message, history=history)
         
         triage_output = TriageOutput(
             intent=triage_result.get("intent", "unknown"),
@@ -429,6 +436,8 @@ async def run_pipeline(req: MessageRequest):
             
             policy_info = get_policy_information(policy_type)
             
+            # Record assistant reply in history and return
+            append_to_history(req.conversation_id, "assistant", policy_info["message"])
             # Return a simplified pipeline response for policy info
             return PipelineResponse(
                 conversation_id=req.conversation_id,
@@ -478,6 +487,7 @@ async def run_pipeline(req: MessageRequest):
             else:
                 response_message = friendly_responses["default"]
             
+            append_to_history(req.conversation_id, "assistant", response_message)
             return PipelineResponse(
                 conversation_id=req.conversation_id,
                 message=req.message,
@@ -539,6 +549,7 @@ async def run_pipeline(req: MessageRequest):
             
             prompt_message = intent_prompts.get(triage_output.intent, "Could you please provide your Order ID?")
             
+            append_to_history(req.conversation_id, "assistant", prompt_message)
             return PipelineResponse(
                 conversation_id=req.conversation_id,
                 message=req.message,
@@ -754,6 +765,9 @@ async def run_pipeline(req: MessageRequest):
                 }
             }
         )
+
+        # Save assistant reply into conversation history for future context
+        append_to_history(req.conversation_id, "assistant", resolution_output.message)
 
         # Return complete pipeline response
         return PipelineResponse(
