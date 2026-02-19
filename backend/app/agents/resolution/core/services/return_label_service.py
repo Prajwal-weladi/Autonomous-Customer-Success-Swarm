@@ -1,6 +1,7 @@
 from fpdf import FPDF
 import os
 from fastapi import Request
+from pathlib import Path
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__)) 
 LABEL_DIR = os.path.join(BASE_DIR, "../../static/labels")
@@ -14,7 +15,7 @@ def generate_return_label(
     request: Request = None
 ) -> str:
     file_name = f"return_label_{order_id}.pdf"
-    file_path = os.path.join(LABEL_DIR, file_name)
+    file_path = os.path.join(str(LABEL_DIR), file_name)
 
     # Use A4, but we'll focus the design in a center block
     pdf = FPDF(orientation='P', unit='mm', format='A4')
