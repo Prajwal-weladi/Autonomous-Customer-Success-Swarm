@@ -1,5 +1,5 @@
 import streamlit as st
-from api.client import send_pipeline_message
+from api.client import send_pipeline_message, send_message
 
 
 def format_resolution_message(pipeline_response: dict) -> str:
@@ -43,7 +43,7 @@ def format_resolution_message(pipeline_response: dict) -> str:
     if policy.get("policy_checked"):
         message_lines.append("")
         message_lines.append("**Policy Review:**")
-        status = "✅ Approved" if policy.get("allowed") else "❌ Not Approved"
+        status = "✅ Eligible" if policy.get("allowed") else "❌ Not Eligible"
         message_lines.append(f"• Status: {status}")
         if policy.get("reason"):
             message_lines.append(f"• Reason: {policy['reason']}")
@@ -52,11 +52,15 @@ def format_resolution_message(pipeline_response: dict) -> str:
     if action in ["EXCHANGE", "RETURN"]:
         message_lines.append("")
         message_lines.append("**Return Process:**")
-        if resolution.get("return_label_url"):
-            message_lines.append(f"📄 [**Download Return Label**]({resolution['return_label_url']})")
         message_lines.append("• Print the label and attach it to your package")
         message_lines.append("• Ship it back using any courier service")
         message_lines.append("• Your replacement/refund will be processed upon receipt")
+
+    # Always show return label URL if present, regardless of action type
+    label_url = resolution.get("return_label_url")
+    if label_url:
+        message_lines.append("")
+        message_lines.append(f"📄 [**Download Return Label**]({label_url})")
     
     if action in ["CANCEL", "REFUND"]:
         if resolution.get("refund_amount"):
@@ -147,6 +151,45 @@ def render_chat(conversation_index: int):
                 meta_text = format_pipeline_metadata(msg["pipeline_data"])
                 if meta_text:
                     st.caption(meta_text)
+                # Render buttons when provided by resolution_output
+                res = msg["pipeline_data"].get("resolution_output", {})
+                buttons = res.get("buttons") if isinstance(res, dict) else None
+                if buttons:
+                    cols = st.columns(len(buttons))
+                    for i, btn in enumerate(buttons):
+                        key = f"btn_{conversation['conversation_id']}_{len(messages)}_{i}"
+                        if cols[i].button(btn.get("label", ""), key=key):
+                            # User clicked a quick-reply button — send to /v1/message to trigger confirmation flow
+                            user_value = btn.get("value") or btn.get("label")
+                            # Append user message
+                            st.session_state.conversations[conversation_index]["messages"].append({
+                                "role": "user",
+                                "content": user_value
+                            })
+                            with st.chat_message("user"):
+                                st.markdown(user_value)
+
+                            # Send to message endpoint (handles awaiting_confirmation)
+                            try:
+                                resp = send_message(conversation["conversation_id"], user_value)
+                                assistant_reply = resp.get("reply") or ""
+
+                                # Append assistant response
+                                st.session_state.conversations[conversation_index]["messages"].append({
+                                    "role": "assistant",
+                                    "content": assistant_reply,
+                                    "pipeline_data": {"resolution_output": resp} if resp else None
+                                })
+
+                                with st.chat_message("assistant"):
+                                    st.markdown(assistant_reply)
+                            except Exception as e:
+                                err = f"❌ Error sending button input: {e}"
+                                st.error(err)
+                                st.session_state.conversations[conversation_index]["messages"].append({
+                                    "role": "assistant",
+                                    "content": err
+                                })
             elif msg.get("meta"):
                 # Fallback for old format
                 meta_text = format_triage_meta(msg["meta"])
@@ -169,44 +212,148 @@ def render_chat(conversation_index: int):
         with st.chat_message("user"):
             st.markdown(user_input)
 
-        # Process through pipeline
-        with st.spinner("Processing through pipeline... 🔄"):
-            try:
-                pipeline_response = send_pipeline_message(
-                    conversation["conversation_id"],
-                    user_input
-                )
+        # Decide which backend endpoint to use.
+        # If conversation or last assistant message indicates awaiting confirmation,
+        # send to `/v1/message` (which handles confirmation). Otherwise use pipeline.
+        use_message_endpoint = False
+        # Check conversation-level status
+        if conversation.get("status") == "awaiting_confirmation":
+            use_message_endpoint = True
 
-                # Build comprehensive user message from pipeline response
-                assistant_reply = format_resolution_message(pipeline_response)
-                
-                st.session_state.conversations[conversation_index]["status"] = pipeline_response.get(
-                    "status",
-                    "completed"
-                )
+        # Check last assistant pipeline data for confirmation requirement
+        if not use_message_endpoint:
+            last_pipeline = None
+            for m in reversed(messages):
+                if m.get("role") == "assistant" and m.get("pipeline_data"):
+                    last_pipeline = m.get("pipeline_data")
+                    break
+            if last_pipeline:
+                res_out = last_pipeline.get("resolution_output") or {}
+                if isinstance(res_out, dict) and (res_out.get("status") == "awaiting_confirmation" or res_out.get("action") == "CONFIRMATION_REQUIRED"):
+                    use_message_endpoint = True
 
-                # Store complete pipeline data with message
-                st.session_state.conversations[conversation_index]["messages"].append({
-                    "role": "assistant",
-                    "content": assistant_reply,
-                    "pipeline_data": pipeline_response
-                })
+        if use_message_endpoint:
+            with st.spinner("Sending confirmation... 🔁"):
+                try:
+                    resp = send_message(conversation["conversation_id"], user_input)
+                    assistant_reply = resp.get("reply") or ""
 
-                # Display assistant response with pipeline details
-                with st.chat_message("assistant"):
-                    st.markdown(assistant_reply)
+                    # Update conversation status from response
+                    st.session_state.conversations[conversation_index]["status"] = resp.get("status", "completed")
+
+                    # Append assistant response and pipeline-like data for rendering buttons/meta
+                    st.session_state.conversations[conversation_index]["messages"].append({
+                        "role": "assistant",
+                        "content": assistant_reply,
+                        "pipeline_data": {"resolution_output": resp}
+                    })
+
+                    with st.chat_message("assistant"):
+                        st.markdown(assistant_reply)
+                        # Render buttons immediately if backend included them in response
+                        try:
+                            res_buttons = resp.get("buttons") if isinstance(resp, dict) else None
+                            if not res_buttons and isinstance(resp, dict) and resp.get("resolution_output"):
+                                res_buttons = resp.get("resolution_output", {}).get("buttons")
+                            if res_buttons:
+                                cols = st.columns(len(res_buttons))
+                                for i, btn in enumerate(res_buttons):
+                                    if cols[i].button(btn.get("label", "")):
+                                        val = btn.get("value") or btn.get("label")
+                                        try:
+                                            click_resp = send_message(conversation["conversation_id"], val)
+                                            click_reply = click_resp.get("reply") or ""
+                                            st.session_state.conversations[conversation_index]["messages"].append({
+                                                "role": "user",
+                                                "content": val
+                                            })
+                                            with st.chat_message("user"):
+                                                st.markdown(val)
+                                            st.session_state.conversations[conversation_index]["messages"].append({
+                                                "role": "assistant",
+                                                "content": click_reply,
+                                                "pipeline_data": {"resolution_output": click_resp}
+                                            })
+                                            with st.chat_message("assistant"):
+                                                st.markdown(click_reply)
+                                        except Exception as e:
+                                            st.error(f"❌ Error on button click: {e}")
+                        except Exception:
+                            pass
+                except Exception as e:
+                    error_msg = f"❌ Error processing request: {str(e)}"
+                    st.error(error_msg)
+                    st.session_state.conversations[conversation_index]["messages"].append({
+                        "role": "assistant",
+                        "content": error_msg
+                    })
+        else:
+            # Process through pipeline
+            with st.spinner("Processing through pipeline... 🔄"):
+                try:
+                    pipeline_response = send_pipeline_message(
+                        conversation["conversation_id"],
+                        user_input
+                    )
+
+                    # Build comprehensive user message from pipeline response
+                    assistant_reply = format_resolution_message(pipeline_response)
                     
-                    meta_text = format_pipeline_metadata(pipeline_response)
-                    if meta_text:
-                        st.caption(meta_text)
+                    st.session_state.conversations[conversation_index]["status"] = pipeline_response.get(
+                        "status",
+                        "completed"
+                    )
 
-            except Exception as e:
-                error_msg = f"❌ Error processing request: {str(e)}"
-                st.error(error_msg)
-                st.session_state.conversations[conversation_index]["messages"].append({
-                    "role": "assistant",
-                    "content": error_msg
-                })
+                    # Store complete pipeline data with message
+                    st.session_state.conversations[conversation_index]["messages"].append({
+                        "role": "assistant",
+                        "content": assistant_reply,
+                        "pipeline_data": pipeline_response
+                    })
+
+                    # Display assistant response with pipeline details
+                    with st.chat_message("assistant"):
+                        st.markdown(assistant_reply)
+                        
+                        meta_text = format_pipeline_metadata(pipeline_response)
+                        if meta_text:
+                            st.caption(meta_text)
+                        # Render buttons immediately if present in resolution_output
+                        try:
+                            res_buttons = pipeline_response.get("resolution_output", {}).get("buttons")
+                            if res_buttons:
+                                cols = st.columns(len(res_buttons))
+                                for i, btn in enumerate(res_buttons):
+                                    if cols[i].button(btn.get("label", "")):
+                                        val = btn.get("value") or btn.get("label")
+                                        try:
+                                            click_resp = send_message(conversation["conversation_id"], val)
+                                            click_reply = click_resp.get("reply") or ""
+                                            st.session_state.conversations[conversation_index]["messages"].append({
+                                                "role": "user",
+                                                "content": val
+                                            })
+                                            with st.chat_message("user"):
+                                                st.markdown(val)
+                                            st.session_state.conversations[conversation_index]["messages"].append({
+                                                "role": "assistant",
+                                                "content": click_reply,
+                                                "pipeline_data": {"resolution_output": click_resp}
+                                            })
+                                            with st.chat_message("assistant"):
+                                                st.markdown(click_reply)
+                                        except Exception as e:
+                                            st.error(f"❌ Error on button click: {e}")
+                        except Exception:
+                            pass
+
+                except Exception as e:
+                    error_msg = f"❌ Error processing request: {str(e)}"
+                    st.error(error_msg)
+                    st.session_state.conversations[conversation_index]["messages"].append({
+                        "role": "assistant",
+                        "content": error_msg
+                    })
 
 
 def format_triage_meta(meta: dict) -> str | None:

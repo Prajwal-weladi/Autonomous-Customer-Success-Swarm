@@ -134,6 +134,28 @@ async def resolution_agent(state):
     logger.debug(f"Intent: {intent}, Policy allowed: {policy_result.get('allowed')}")
     
     # Generate response based on intent
+    intent = state.get("intent", "unknown")
+    
+    # Check for confirmation requirement
+    if intent in ["refund", "return", "exchange", "cancel"]:
+        confirmation_status = state.get("entities", {}).get("confirmation_status")
+        
+        if confirmation_status != "confirmed":
+            logger.info(f"Requesting confirmation for {intent}")
+            order_details = state.get("entities", {}).get("order_details", {})
+            order_id = order_details.get("order_id")
+            product = order_details.get("product")
+            
+            state["reply"] = f"Are you sure you want to proceed with the {intent} for Order #{order_id} ({product})? This action cannot be undone."
+            state["status"] = "completed"
+            state["current_state"] = "COMPLETED"
+            
+            # Add metadata for frontend to render buttons
+            state["entities"]["action"] = "CONFIRMATION_REQUIRED"
+            state["entities"]["pending_intent"] = intent
+            
+            return state
+
     if intent == "refund":
         logger.info("Generating refund response")
         reply = generate_refund_response(state)
@@ -171,6 +193,15 @@ async def resolution_agent(state):
     state["reply"] = reply
     state["status"] = "completed"
     state["current_state"] = "COMPLETED"
+    
+    # Clear confirmation status after successful execution
+    if "confirmation_status" in state["entities"]:
+        del state["entities"]["confirmation_status"]
+    if "pending_intent" in state["entities"]:
+        del state["entities"]["pending_intent"]
+        
+    # Set action for frontend
+    state["entities"]["action"] = intent.upper()
     
     logger.info(f"✅ RESOLUTION: Response generated successfully")
     logger.debug(f"Reply preview: {reply[:100]}...")
