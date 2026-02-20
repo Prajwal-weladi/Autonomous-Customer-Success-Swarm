@@ -11,14 +11,22 @@ def format_resolution_message(pipeline_response: dict) -> str:
     
     action = resolution.get("action", "unknown").upper()
     message_lines = []
+    label_url = resolution.get("return_label_url")
     
-    # SPECIAL CASE: Awaiting input (order ID, confirmation, etc.)
+    # --- SPECIAL CASE: Awaiting input (order ID, confirmation, etc.) ---
     if action in ["AWAITING_ORDER_ID", "AWAITING_CONFIRMATION", "GENERAL_CONVERSATION", "POLICY_INFO"]:
-        # For these cases, just return the message without extra formatting
         agent_message = resolution.get("message", "")
-        if agent_message:
-            return agent_message
-        return "I'm here to help! How can I assist you today?"
+        if not agent_message:
+            agent_message = "I'm here to help! How can I assist you today?"
+        
+        # FIX: Even in special cases, if a label exists, we must append it 
+        # before returning, otherwise the function ends here and skips the rest.
+        if label_url:
+            agent_message += f"\n\n📄 [**Download Return Label**]({label_url})"
+            
+        return agent_message
+    
+    # --- Main flow for completed actions ---
     
     # Main action message
     agent_message = resolution.get("message", "")
@@ -56,8 +64,7 @@ def format_resolution_message(pipeline_response: dict) -> str:
         message_lines.append("• Ship it back using any courier service")
         message_lines.append("• Your replacement/refund will be processed upon receipt")
 
-    # Always show return label URL if present, regardless of action type
-    label_url = resolution.get("return_label_url")
+    # Always show return label URL if present
     if label_url:
         message_lines.append("")
         message_lines.append(f"📄 [**Download Return Label**]({label_url})")
@@ -101,7 +108,6 @@ def format_resolution_message(pipeline_response: dict) -> str:
     message_lines.append("*Thank you for your patience. Is there anything else we can help you with?*")
     
     return "\n".join(message_lines)
-
 
 def format_pipeline_metadata(response: dict) -> str:
     """Format pipeline execution details for display"""

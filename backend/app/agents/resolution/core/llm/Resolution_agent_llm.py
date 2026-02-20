@@ -148,7 +148,7 @@ def run_agent_llm(data: ResolutionInput) -> dict:
             product=product_name,
             size=data.size
         )
-
+        return_label_url = f"http://localhost:8000/labels/{file_name}"
         return {
             "action": "exchange",
             "message": (
@@ -156,11 +156,13 @@ def run_agent_llm(data: ResolutionInput) -> dict:
                 f"📦 Product: {product_name}\n"
                 f"🔢 Order ID: {data.order_id}\n"
                 f"📏 Size: {size_value}\n\n"
-                f"📄 A prepaid return label has been generated.\n"
-                f"Please send the original item back.\n"
-                f"🔁 Once received, we will ship your replacement item."
+                f"📄 A prepaid return label has been generated.\n\n"
+                f"📄 Download your label here:[**Download Label**]({return_label_url})\n\n"
+                f"Please send the original item back.\n\n"
+                f"🔁 Once received, we will ship your replacement item.\n\n"
+               
             ),
-            "return_label_url": f"http://localhost:8000/labels/{file_name}",
+            "return_label_url": return_label_url,
             "refund_amount": None,
             "reason": None
         }
