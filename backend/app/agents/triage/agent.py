@@ -11,6 +11,13 @@ except ImportError:
     OLLAMA_AVAILABLE = False
     print("Warning: ollama not available, using rule-based triage only")
 
+# Short greetings / chitchat that should always be general_question
+GREETING_PHRASES = [
+    "hi", "hey", "hello", "hey hi", "hi there", "hello there", "good morning",
+    "good afternoon", "good evening", "howdy", "greetings", "sup", "what's up",
+    "how are you", "how can you help", "what can you do", "help me", "help",
+]
+
 INTENT_RULES = {
     "policy_info": ["policy", "refund policy", "return policy", "exchange policy", "cancellation policy", "cancel policy", "how does", "what is your", "tell me about", "what are the", "explain"],
     "cancel": ["cancel order", "cancel my order", "cancel this order", "want to cancel"],
@@ -63,7 +70,22 @@ def extract_order_id(text: str) -> str | None:
 
 def rule_based_intent(text: str) -> str | None:
     """Determine intent using keyword matching"""
-    text_lower = text.lower()
+    text_lower = text.lower().strip()
+
+    # Check for greetings first — they must never be action intents
+    for phrase in GREETING_PHRASES:
+        if text_lower == phrase or text_lower.startswith(phrase + " ") or text_lower.endswith(" " + phrase):
+            return "general_question"
+
+    # Also treat very short messages (≤ 3 words) with no clear support keyword as general_question
+    words = text_lower.split()
+    if len(words) <= 3 and not any(
+        kw in text_lower
+        for keywords in INTENT_RULES.values()
+        for kw in keywords
+    ):
+        return "general_question"
+
     for intent, keywords in INTENT_RULES.items():
         for keyword in keywords:
             if keyword in text_lower:
@@ -115,8 +137,23 @@ def run_triage(message: str, history: list | None = None) -> dict:
     text = full_context.lower()
     order_id = extract_order_id(message) or extract_order_id(full_context)
     urgency = rule_based_urgency(text)
-    fallback_intent = rule_based_intent(text) or "unknown"
-    
+
+    # ── Check the CURRENT message alone for greeting/general classification ──
+    # This must run before the LLM so it cannot be overridden.
+    message_intent = rule_based_intent(message)
+    if message_intent == "general_question":
+        logger.info("⚡ TRIAGE: Message detected as greeting/general — skipping LLM, returning general_question")
+        return {
+            "intent": "general_question",
+            "urgency": "normal",
+            "order_id": None,
+            "confidence": 0.90,
+            "user_issue": message,
+        }
+    # ────────────────────────────────────────────────────────────────────────
+
+    fallback_intent = message_intent or rule_based_intent(text) or "unknown"
+
     logger.debug(f"Rule-based extraction: intent={fallback_intent}, order_id={order_id}, urgency={urgency}")
 
     # If Ollama is not available, use rule-based only
@@ -238,8 +275,32 @@ async def triage_agent(state):
         state["last_error"] = "Empty user message"
         state["current_state"] = "HUMAN_HANDOFF"
         return state
-    
-    # Run triage analysis
+
+    # ─── SPECIAL CASE: we were waiting for the user to provide an order ID ───
+    # In this case do NOT re-run full triage — just extract the order ID from
+    # the reply and keep the intent that was already established.
+    if state.get("awaiting_order_id") and state.get("intent"):
+        order_id = extract_order_id(message)
+        if order_id:
+            logger.info(
+                f"📦 TRIAGE: 'awaiting_order_id' reply — keeping intent='{state['intent']}', "
+                f"extracted order_id={order_id}"
+            )
+            state.setdefault("entities", {})
+            state["entities"]["order_id"] = order_id
+            state["entities"]["query"] = message
+            state["awaiting_order_id"] = False
+            state["current_state"] = "DATA_FETCH"
+            return state
+        else:
+            # User replied but there's still no order ID — ask again
+            logger.warning("⚠️ TRIAGE: Awaiting order ID but none found in reply")
+            state["reply"] = "I couldn't find an order ID in your message. Could you please share your order number?"
+            state["current_state"] = "COMPLETED"
+            return state
+    # ─────────────────────────────────────────────────────────────────────────
+
+    # Normal triage path
     result = run_triage(message)
     logger.info(f"✅ TRIAGE: Detected intent={result.get('intent')}, order_id={result.get('order_id')}, urgency={result.get('urgency')}")
 
