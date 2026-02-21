@@ -1,124 +1,86 @@
-#######################################
-# General
-#######################################
-.DS_Store
-Thumbs.db
-*.log
-*.pid
+# ============================================
+# Python Backend
+# ============================================
 
-#######################################
-# Environment variables / secrets
-#######################################
-.env
-.env.*
-!.env.example
-
-#######################################
-# Python
-#######################################
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.egg-info/
-.eggs/
-dist/
-build/
-.cache/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-coverage/
-htmlcov/
-
-#######################################
-# Virtual Environments
-#######################################
+# Virtual Environment
 venv/
-.venv/
 env/
 ENV/
+.venv/
+.env/
+virtualenv/
 
-#######################################
-# Streamlit
-#######################################
-.streamlit/secrets.toml
-.streamlit/config.toml
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 
-#######################################
-# Node / React (future-proof)
-#######################################
+# Environment Variables
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+*.env
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+db.sqlite3
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
+.tox/
+
+# ============================================
+# Node.js / Frontend (React + Vite)
+# ============================================
+
+# Dependencies
 node_modules/
+jspm_packages/
+bower_components/
+
+# Production Build
+frontend/dist/
+frontend/build/
+dist/
+build/
+
+# Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-lock.yaml
+pnpm-debug.log*
+lerna-debug.log*
 
-#######################################
-# Frontend build output
-#######################################
-frontend/dist/
-frontend/build/
-frontend/.next/
-frontend/.cache/
+# Cache
+.npm
+.eslintcache
+.stylelintcache
+.cache/
+.parcel-cache
 
-#######################################
-# Backend runtime artifacts
-#######################################
-backend/.pytest_cache/
-backend/app/storage/__pycache__/
+# Env files (Node)
+.env
 
-#######################################
-# Database
-#######################################
-*.sqlite
-*.db
-*.dump
-*.sql.bak
+# ============================================
+# IDE / Editors
+# ============================================
 
-#######################################
-# Redis / Cache
-#######################################
-dump.rdb
+# VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
 
-#######################################
-# Docker
-#######################################
-*.pid
-docker-compose.override.yml
-
-#######################################
-# Kubernetes / Infra secrets
-#######################################
-infra/**/secrets.yaml
-infra/**/secret.yaml
-infra/**/.env
-
-#######################################
-# IDEs & Editors
-#######################################
-.vscode/
-.idea/
-*.swp
-*.swo
-*.swn
-
-#######################################
-# OS / Temp files
-#######################################
-*.tmp
-*.temp
-*.bak
-
-#######################################
-# CI artifacts
-#######################################
-reports/
-artifacts/
-
-#######################################
-# Logs
-#######################################
-logs/
-/venv
-/venv

@@ -25,6 +25,7 @@ CRITICAL INTENT RULES:
 - Only use refund if the user explicitly says "refund", "money back", or "get my money back".
 - GREETINGS AND CHITCHAT such as "hi", "hey", "hello", "hey hi", "good morning", "how are you", "what can you do" MUST always be classified as intent=general_question with confidence <= 0.80. NEVER classify a greeting as return, refund, cancel, exchange, or any other action intent.
 - If the message contains NO clear support request (no mention of order, product issue, refund, return, cancellation, tracking, or policy), classify it as general_question.
+- INFORMATIONAL QUERIES: If the user is ASKING ABOUT or WANTING TO KNOW about refunds, returns, exchanges, or cancellations (e.g. "I want to know the refund policy", "tell me about return policy", "what are the exchange policies", "explain cancellation rules"), classify as policy_info — NOT as refund/return/exchange/cancel. Those action intents are ONLY for when the user wants to actually DO the action on their order.
 
 Urgency levels:
 low

@@ -19,10 +19,19 @@ GREETING_PHRASES = [
 ]
 
 INTENT_RULES = {
-    "policy_info": ["policy", "refund policy", "return policy", "exchange policy", "cancellation policy", "cancel policy", "how does", "what is your", "tell me about", "what are the", "explain"],
+    "policy_info": [
+        "policy", "policies",
+        "refund policy", "return policy", "exchange policy",
+        "cancellation policy", "cancel policy",
+        "how does", "what is your", "tell me about", "what are the",
+        "explain", "want to know", "like to know", "know about",
+        "about refund", "about return", "about exchange", "about cancel",
+        "for refund", "for return", "for exchange",
+        "refund rules", "return rules", "cancellation rules",
+    ],
     "cancel": ["cancel order", "cancel my order", "cancel this order", "want to cancel"],
     "refund": ["refund", "money back", "get my money"],
-    "return": ["return", "send back", "don't want"],
+    "return": ["return", "send back", "send it back", "don't want"],
     "exchange": ["exchange", "replace", "swap", "different size", "different color"],
     "order_tracking": ["where is my order", "track", "order status", "hasn't arrived", "not received", "check status", "check my order", "status of order", "status for order"],
     "complaint": ["bad", "worst", "terrible", "not happy", "angry", "disappointed", "poor quality"],
@@ -68,6 +77,21 @@ def extract_order_id(text: str) -> str | None:
     return None
 
 
+# Info-seeking phrases — if paired with any action topic, route to policy_info
+INFO_SEEKING_PHRASES = [
+    "want to know", "like to know", "know about", "know the",
+    "tell me", "explain", "what is", "what are", "how does", "how do",
+    "can you tell", "information about", "info about", "details about",
+    "learn about", "understand",
+]
+
+# Topic words that, when paired with an info-seeking phrase, signal a policy query
+ACTION_TOPIC_WORDS = [
+    "refund", "return", "exchange", "cancel", "cancellation",
+    "policy", "policies", "rules",
+]
+
+
 def rule_based_intent(text: str) -> str | None:
     """Determine intent using keyword matching"""
     text_lower = text.lower().strip()
@@ -85,6 +109,14 @@ def rule_based_intent(text: str) -> str | None:
         for kw in keywords
     ):
         return "general_question"
+
+    # Informational query override:
+    # If the message has info-seeking language AND an action topic, it's a policy question —
+    # not an action request. This prevents "i want to know the refund policy" → refund.
+    has_info_seeking = any(phrase in text_lower for phrase in INFO_SEEKING_PHRASES)
+    has_action_topic = any(word in text_lower for word in ACTION_TOPIC_WORDS)
+    if has_info_seeking and has_action_topic:
+        return "policy_info"
 
     for intent, keywords in INTENT_RULES.items():
         for keyword in keywords:
@@ -142,11 +174,14 @@ def run_triage(message: str, history: list | None = None) -> dict:
     # This must run before the LLM so it cannot be overridden.
     message_intent = rule_based_intent(message)
     if message_intent == "general_question":
+        # Still include the order_id if one was found in the message
+        # (e.g. "296842434273 this is" — 3 words, no keywords → general_question,
+        #  but the number IS an order ID we need to pass along)
         logger.info("⚡ TRIAGE: Message detected as greeting/general — skipping LLM, returning general_question")
         return {
             "intent": "general_question",
             "urgency": "normal",
-            "order_id": None,
+            "order_id": order_id,   # ← use the extracted value, not None
             "confidence": 0.90,
             "user_issue": message,
         }
