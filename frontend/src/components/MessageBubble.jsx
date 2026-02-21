@@ -1,13 +1,14 @@
 import React from 'react';
-import { User, Bot, AlertCircle, Info, CheckCircle2, Package } from 'lucide-react';
+import { User, Bot, AlertCircle, Info, CheckCircle2, Package, XCircle } from 'lucide-react';
 import { GlassCard } from './GlassUI';
 
-const MessageBubble = ({ message }) => {
+const MessageBubble = ({ message, onSendMessage, isLastMessage }) => {
     const isUser = message.role === 'user';
     const pipelineData = message.pipeline_data;
     const resolution = pipelineData?.resolution_output;
     const db = pipelineData?.database_output?.order_details || pipelineData?.order_details;
-    const labelUrl = resolution?.return_label_url || pipelineData?.return_label_url;
+    const labelUrl = resolution?.return_label_url || pipelineData?.return_label_url || message.return_label_url;
+    const buttons = pipelineData?.buttons || message.buttons;
 
     return (
         <div className={`flex w-full mb-6 ${isUser ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
@@ -49,6 +50,31 @@ const MessageBubble = ({ message }) => {
                                         <span className="text-slate-100 font-medium">{db.delivered_date || 'N/A'}</span>
                                     </div>
                                 </div>
+                            </div>
+                        )}
+
+                        {/* Interactive Buttons */}
+                        {buttons && buttons.length > 0 && isLastMessage && (
+                            <div className="flex flex-wrap gap-3 mt-4 animate-in zoom-in-95 duration-200 delay-150">
+                                {buttons.map((btn, idx) => {
+                                    const isYes = btn.value.toLowerCase() === 'yes';
+                                    const isNo = btn.value.toLowerCase() === 'no';
+
+                                    return (
+                                        <button
+                                            key={idx}
+                                            onClick={() => onSendMessage(btn.value)}
+                                            className={`flex items-center gap-2 py-2 px-5 rounded-xl border transition-all duration-300 font-semibold text-sm shadow-lg
+                                                ${isYes ? 'bg-green-600/20 border-green-500/30 text-green-400 hover:bg-green-600/40 hover:scale-105 active:scale-95' :
+                                                    isNo ? 'bg-red-600/20 border-red-500/30 text-red-400 hover:bg-red-600/40 hover:scale-105 active:scale-95' :
+                                                        'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:scale-105 active:scale-95'}`}
+                                        >
+                                            {isYes && <CheckCircle2 size={16} />}
+                                            {isNo && <XCircle size={16} />}
+                                            {btn.label}
+                                        </button>
+                                    );
+                                })}
                             </div>
                         )}
 

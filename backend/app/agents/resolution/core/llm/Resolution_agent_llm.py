@@ -120,7 +120,6 @@ def run_agent_llm(data: ResolutionInput) -> dict:
                 f"🔢 Order ID: {data.order_id}\n"
                 f"📏 Size: {size_value}\n\n"
                 f"📄 A prepaid return label has been generated.\n\n"
-                f"📥 [**Download Return Label**]({return_label_url})\n\n"
                 f"Please print the label and ship the item back.\n"
                 f"💰 Refund will be processed after inspection."
             ),
@@ -159,7 +158,6 @@ def run_agent_llm(data: ResolutionInput) -> dict:
                 f"🔢 Order ID: {data.order_id}\n"
                 f"📏 Size: {size_value}\n\n"
                 f"📄 A prepaid return label has been generated.\n\n"
-                f"📄 Download your label here:[**Download Label**]({return_label_url})\n\n"
                 f"Please send the original item back.\n\n"
                 f"🔁 Once received, we will ship your replacement item.\n\n"
                
