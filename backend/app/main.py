@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.api.message import router as message_router
 from app.api.policy import router as policy_router
 from app.api.resolution import router as resolution_router
@@ -7,6 +8,14 @@ from fastapi.staticfiles import StaticFiles
 import os
 
 app = FastAPI(title="Customer Success Orchestrator", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
