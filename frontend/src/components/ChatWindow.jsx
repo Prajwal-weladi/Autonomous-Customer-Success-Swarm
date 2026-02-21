@@ -41,7 +41,12 @@ const ChatWindow = ({ messages, onSendMessage, isLoading, handoffStatus }) => {
                     </div>
                 ) : (
                     messages.map((msg, idx) => (
-                        <MessageBubble key={idx} message={msg} />
+                        <MessageBubble
+                            key={idx}
+                            message={msg}
+                            onSendMessage={onSendMessage}
+                            isLastMessage={idx === messages.length - 1}
+                        />
                     ))
                 )}
 
@@ -52,7 +57,7 @@ const ChatWindow = ({ messages, onSendMessage, isLoading, handoffStatus }) => {
                                 <Loader2 size={20} className="animate-spin" />
                             </div>
                             <div className="bg-white/5 border border-white/10 py-3 px-6 rounded-2xl flex items-center gap-2">
-                                <span className="text-sm text-slate-400">Thinking</span>
+                                <span className="text-sm text-slate-400">Processing</span>
                                 <span className="flex gap-1">
                                     <span className="w-1 h-1 rounded-full bg-slate-500 animate-bounce"></span>
                                     <span className="w-1 h-1 rounded-full bg-slate-500 animate-bounce [animation-delay:-0.15s]"></span>

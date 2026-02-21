@@ -17,80 +17,127 @@ def generate_return_label(
     file_name = f"return_label_{order_id}.pdf"
     file_path = os.path.join(str(LABEL_DIR), file_name)
 
-    # Use A4, but we'll focus the design in a center block
+    # Professional PDF Design
     pdf = FPDF(orientation='P', unit='mm', format='A4')
     pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
     
-    # --- HEADER SECTION ---
-    # Light Gray Header Background
-    pdf.set_fill_color(240, 240, 240)
-    pdf.rect(10, 10, 190, 25, 'F')
+    # --- COLORS & FONTS ---
+    NAVY = (33, 47, 61)
+    STEEL_BLUE = (46, 134, 193)
+    LIGHT_GRAY = (242, 244, 244)
+    TEXT_DARK = (44, 62, 80)
+    WHITE = (255, 255, 255)
+
+    # --- HEADER BAR ---
+    pdf.set_fill_color(*NAVY)
+    pdf.rect(0, 0, 210, 40, 'F')
     
-    pdf.set_y(15)
-    pdf.set_font("Arial", 'B', 20)
-    pdf.set_text_color(50, 50, 50)
-    pdf.cell(0, 10, "RETURN / EXCHANGE AUTHORIZATION", ln=True, align="C")
+    # --- LOGO (Drawn with Primitives) ---
+    # Hexagon backdrop
+    pdf.set_fill_color(*STEEL_BLUE)
+    x, y, r = 25, 20, 12
+    pdf.ellipse(x-r, y-r, r*2, r*2, 'F')
     
+    # Text in Logo
+    pdf.set_font("Arial", 'B', 14)
+    pdf.set_text_color(*WHITE)
+    pdf.set_xy(x-10, y-5)
+    pdf.cell(20, 10, "CS", align="C")
+    
+    # Branding Text
+    pdf.set_font("Arial", 'B', 22)
+    pdf.set_xy(45, 12)
+    pdf.cell(0, 15, "CS SWARM SOLUTIONS", ln=True)
     pdf.set_font("Arial", '', 10)
-    pdf.cell(0, 5, "Please include this document inside or attached to your package.", ln=True, align="C")
-    pdf.ln(15)
+    pdf.set_xy(45, 24)
+    pdf.cell(0, 5, "Automated Customer Excellence", ln=True)
 
-    # --- ORDER DETAILS SECTION (Table Style) ---
-    pdf.set_text_color(0, 0, 0)
+    # --- TITLE ---
+    pdf.ln(20)
+    pdf.set_font("Arial", 'B', 18)
+    pdf.set_text_color(*TEXT_DARK)
+    pdf.cell(0, 15, "RETURN MERCHANDISE AUTHORIZATION", ln=True, align="C")
+    
+    # Pseudo-Barcode
+    import random
+    pdf.set_fill_color(0, 0, 0)
+    barcode_x = 75
+    barcode_y = pdf.get_y()
+    for i in range(40):
+        w = random.uniform(0.5, 2.0)
+        pdf.rect(barcode_x, barcode_y, w, 8, 'F')
+        barcode_x += w + 0.5
+    pdf.ln(12)
+    
+    # --- ORDER DETAILS SECTION ---
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "1. ORDER INFORMATION", ln=True)
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y()) # Horizontal divider
-    pdf.ln(3)
+    pdf.cell(0, 10, "1. SHIPMENT & ORDER DETAILS", ln=True)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(5)
 
-    # Helper function for table rows within the function
-    def add_row(label, value):
-        pdf.set_font("Arial", 'B', 11)
-        pdf.set_fill_color(250, 250, 250)
-        pdf.cell(45, 10, f"  {label}", border=1, fill=True)
-        pdf.set_font("Arial", '', 11)
-        pdf.cell(145, 10, f"  {value}", border=1, ln=True)
+    # Table Header
+    pdf.set_fill_color(*LIGHT_GRAY)
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(50, 10, " FIELD", border=1, fill=True)
+    pdf.cell(140, 10, " INFORMATION", border=1, fill=True, ln=True)
 
-    add_row("Order ID", f"#{order_id}")
+    # Table Rows
+    def add_table_row(label, value, stripe=False):
+        pdf.set_font("Arial", 'B', 10)
+        if stripe: pdf.set_fill_color(248, 249, 249)
+        else: pdf.set_fill_color(255, 255, 255)
+        
+        pdf.cell(50, 10, f"  {label}", border=1, fill=True)
+        pdf.set_font("Arial", '', 10)
+        pdf.cell(140, 10, f"  {value}", border=1, fill=True, ln=True)
+
+    add_table_row("Order ID", f"ORD-{order_id}", stripe=False)
     if product:
-        add_row("Product Name", product)
+        add_table_row("Product", product, stripe=True)
     if size:
-        add_row("Product Size", str(size))
-    
-    
+        add_table_row("Size/Spec", str(size), stripe=False)
+    add_table_row("Return Code", f"RMA-{random.randint(1000, 9999)}", stripe=product is not None)
+
     pdf.ln(10)
 
     # --- INSTRUCTIONS SECTION ---
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "2. RETURN INSTRUCTIONS", ln=True)
+    pdf.cell(0, 10, "2. INSTRUCTIONS FOR RETURN", ln=True)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-    pdf.ln(4)
+    pdf.ln(5)
 
-    pdf.set_font("Arial", '', 11)
+    pdf.set_font("Arial", '', 10)
     if message:
-        pdf.multi_cell(0, 7, message)
-    else:
-        # Professional Bullet Points
-        instructions = [
-            "- PACKING: Ensure the product is in its original box with all tags attached.",
-            "- LABELING: Securely tape this label to the outside of the shipping box.",
-            "- HANDOVER: Give this package to our authorized delivery agent upon arrival.",
-            "- INSPECTION: We will ship your replacement after a quality check (approx. 2-3 days)."
-        ]
-        for line in instructions:
-            pdf.cell(0, 8, line, ln=True)
+        pdf.set_fill_color(254, 249, 231) # Light yellow highlight for custom message
+        pdf.multi_cell(0, 6, f"AGENT NOTE: {message}", border=1, fill=True)
+        pdf.ln(5)
+    
+    instructions = [
+        ("PACK", "Secure items in original packaging. Include all tags and accessories."),
+        ("LABEL", "Affix this label clearly on the largest side of the package."),
+        ("SHIP", "Schedule a pickup or drop off at any authorized logistics hub."),
+        ("TRACK", "Keep your tracking receipt until the refund is fully processed.")
+    ]
+    
+    for head, text in instructions:
+        pdf.set_font("Arial", 'B', 10)
+        pdf.cell(20, 7, f"{head}:", ln=0)
+        pdf.set_font("Arial", '', 10)
+        pdf.cell(0, 7, text, ln=1)
 
     # --- FOOTER ---
-    pdf.set_y(-50)
-    pdf.set_font("Arial", 'B', 11)
-    pdf.cell(0, 10, "Need Help?", ln=True, align="C")
+    pdf.set_y(-35)
+    pdf.set_font("Arial", 'I', 8)
+    pdf.set_text_color(128, 139, 150)
+    pdf.cell(0, 5, "Generated by CS Swarm Autonomous Assistant", ln=True, align="C")
+    pdf.set_font("Arial", '', 9)
+    pdf.cell(0, 5, "support@csswarm.io | +1 (800) SWARM-CS", ln=True, align="C")
     
-    pdf.set_font("Arial", 'I', 10)
-    pdf.set_text_color(100, 100, 100)
-    footer_text = (
-        "Thank you for shopping with us! If you have any questions,\n"
-        "please visit our help center or contact customer support."
-    )
-    pdf.multi_cell(0, 6, footer_text, align="C")
+    # Page Border
+    pdf.set_draw_color(*STEEL_BLUE)
+    pdf.set_line_width(0.5)
+    pdf.rect(5, 5, 200, 287)
 
     # Save PDF
     pdf.output(file_path)
