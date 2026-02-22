@@ -207,7 +207,7 @@ def run_triage(message: str, history: list | None = None) -> dict:
         logger.debug("Attempting LLM-based triage analysis")
         prompt = TRIAGE_PROMPT.format(message=message, history=history_text or "(no prior history)")
         response = ollama.chat(
-            model="qwen2.5:0.5b",
+            model="llama3:8b",
             messages=[{"role": "user", "content": prompt}],
             options={"temperature": 0.1}  # Lower temperature for more consistent output
         )
