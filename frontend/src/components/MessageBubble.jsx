@@ -53,6 +53,35 @@ const MessageBubble = ({ message, onSendMessage, isLastMessage }) => {
                             </div>
                         )}
 
+                        {/* Order List (for list_orders intent) */}
+                        {pipelineData?.orders && pipelineData.orders.length > 0 && (
+                            <div className="mt-4 space-y-3">
+                                <div className="flex items-center gap-2 text-purple-400 font-semibold text-xs mb-1">
+                                    <Package size={14} />
+                                    <span>Your Recent Orders</span>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    {pipelineData.orders.map((order) => (
+                                        <div
+                                            key={order.order_id}
+                                            className="p-3 rounded-xl bg-white/5 border border-white/10 hover:border-purple-500/30 transition-colors cursor-pointer group"
+                                            onClick={() => onSendMessage(`Details for order ${order.order_id}`)}
+                                        >
+                                            <div className="flex justify-between items-start mb-2">
+                                                <span className="text-[10px] text-slate-500 font-mono">#{order.order_id}</span>
+                                                <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${order.status?.toLowerCase() === 'delivered' ? 'bg-green-500/10 text-green-400' : 'bg-blue-500/10 text-blue-400'
+                                                    }`}>
+                                                    {order.status}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs font-medium text-slate-200 truncate group-hover:text-purple-400 transition-colors">{order.product}</p>
+                                            <p className="text-[10px] text-slate-500 mt-1">₹{order.amount} • {order.order_date}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Interactive Buttons */}
                         {buttons && buttons.length > 0 && isLastMessage && (
                             <div className="flex flex-wrap gap-3 mt-4 animate-in zoom-in-95 duration-200 delay-150">

@@ -30,7 +30,7 @@ def delivered_recent_order():
         "order_date": days_ago(20),
         "delivered_date": days_ago(10),
         "amount": 2199,
-        "size": "M",
+        "quantity": 1,
     }
 
 
@@ -44,7 +44,7 @@ def delivered_old_order():
         "order_date": days_ago(50),
         "delivered_date": days_ago(35),
         "amount": 3499,
-        "size": "10",
+        "quantity": 1,
     }
 
 
@@ -58,7 +58,7 @@ def delivered_expired_order():
         "order_date": days_ago(65),
         "delivered_date": days_ago(50),
         "amount": 8999,
-        "size": "N/A",
+        "quantity": 1,
     }
 
 
@@ -72,7 +72,7 @@ def shipped_order():
         "order_date": days_ago(3),
         "delivered_date": None,
         "amount": 1299,
-        "size": "L",
+        "quantity": 1,
     }
 
 
@@ -86,7 +86,7 @@ def processing_order():
         "order_date": days_ago(1),
         "delivered_date": None,
         "amount": 999,
-        "size": "N/A",
+        "quantity": 1,
     }
 
 
@@ -100,5 +100,5 @@ def cancelled_order():
         "order_date": days_ago(10),
         "delivered_date": None,
         "amount": 1599,
-        "size": "N/A",
+        "quantity": 1,
     }

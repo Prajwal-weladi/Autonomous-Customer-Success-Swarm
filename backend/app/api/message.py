@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from app.orchestrator.runner import run_orchestrator
 from app.agents.triage.agent import run_triage
-from app.agents.database.db_service import fetch_order_details
+from app.agents.database.db_service import fetch_order_details, record_approved_request, cancel_existing_request, check_existing_request
 from app.agents.policy.agent import check_refund_policy, check_return_policy, check_exchange_policy
 from app.agents.resolution.core.llm.Resolution_agent_llm import run_agent_llm
 from app.agents.resolution.app.schemas.model import ResolutionInput
@@ -21,6 +21,7 @@ router = APIRouter()
 class MessageRequest(BaseModel):
     conversation_id: str
     message: str
+    user_email: Optional[str] = None
 
 
 class MessageResponse(BaseModel):
@@ -38,6 +39,7 @@ class MessageResponse(BaseModel):
     buttons: Optional[list] = None
     return_label_url: Optional[str] = None
     refund_amount: Optional[int] = None
+    orders: Optional[list] = None
 
 
 class TriageOutput(BaseModel):
@@ -83,6 +85,7 @@ class PipelineResponse(BaseModel):
     database_output: DatabaseOutput
     policy_output: PolicyOutput
     resolution_output: ResolutionOutput
+    orders: Optional[list] = None
     status: str = "completed"
 
 
@@ -112,9 +115,72 @@ async def handle_message(req: MessageRequest):
         
         # Quick triage to determine intent
         from app.agents.triage.agent import run_triage
-        triage_result = run_triage(req.message)
+        # Load history for triage context - pass user_email for persistence
+        history = get_history(req.conversation_id, user_email=req.user_email)
+        triage_result = run_triage(req.message, history=history)
         intent = triage_result.get("intent")
         order_id = triage_result.get("order_id")
+        
+        # Determine user email
+        user_email = req.user_email or previous_state.get("user_email") or "guest@example.com"
+        
+        # Product-based Order Resolution: If missing order_id, try to find it by product name
+        action_intents = ["return", "refund", "exchange", "cancel", "order_tracking"]
+        if intent in action_intents and not order_id and user_email != "guest@example.com":
+            from app.agents.database.db_service import fetch_orders_by_email
+            user_orders = fetch_orders_by_email(user_email)
+            if user_orders:
+                matches = []
+                msg_lower = req.message.lower()
+                for order in user_orders:
+                    prod_lower = order.product.lower()
+                    if prod_lower in msg_lower or any(word in msg_lower for word in prod_lower.split() if len(word) > 3):
+                        matches.append(order)
+                
+                # If no explicit product was matched, handle based on total order count
+                if len(matches) == 0:
+                    if len(user_orders) == 1:
+                        matches = [user_orders[0]]
+                    else:
+                        matches = user_orders
+                
+                if len(matches) == 1:
+                    resolved_order = matches[0]
+                    logger.info(f"✅ Resolved order automatically: #{resolved_order.order_id}")
+                    order_id = str(resolved_order.order_id)
+                    # Update request for downstream agents
+                    req.message = f"{req.message} (Order #{order_id})"
+                elif len(matches) > 1:
+                    logger.info(f"⚠️ Ambiguous or missing order specification for '{req.message}'")
+                    choices = "\n".join([f"- **#{m.order_id}**: {m.product} ({m.status})" for m in matches])
+                    reply = f"I found multiple orders that might match your request:\n\n{choices}\n\nWhich one did you want to resolve?"
+                    
+                    save_state(req.conversation_id, {
+                        "conversation_id": req.conversation_id,
+                        "intent": intent,
+                        "awaiting_order_id": True,
+                        "entities": previous_state.get("entities", {}),
+                        "status": "awaiting_input"
+                    })
+                    append_to_history(req.conversation_id, "user", req.message, user_email=user_email)
+                    append_to_history(req.conversation_id, "assistant", reply, user_email=user_email)
+                    
+                    return MessageResponse(
+                        conversation_id=req.conversation_id,
+                        reply=reply,
+                        status="awaiting_input",
+                        intent=intent,
+                        orders=[{
+                            "order_id": o.order_id,
+                            "product": o.product,
+                            "status": o.status,
+                            "order_date": str(o.order_date),
+                            "amount": o.amount
+                        } for o in matches]
+                    )
+        if user_email and not previous_state.get("user_email"):
+            previous_state["user_email"] = user_email
+            save_state(req.conversation_id, previous_state)
         
         # ROUTE 1: Policy Information Queries
         if intent == "policy_info":
@@ -142,6 +208,70 @@ async def handle_message(req: MessageRequest):
                 reply=policy_info["message"],
                 status="completed",
                 intent="policy_info"
+            )
+
+        # ROUTE 1.7: List Orders (Show all orders for the authenticated user)
+        if intent == "list_orders":
+            logger.info(f"🔀 ROUTE 1.7: List orders query detected for {user_email}")
+            from app.agents.database.db_service import fetch_orders_by_email
+            
+            if user_email == "guest@example.com":
+                reply = "I'm sorry, I can only list orders for regular users. Please log in to see your order history."
+            else:
+                orders = fetch_orders_by_email(user_email)
+                if not orders:
+                    reply = f"I couldn't find any orders specifically linked to your account ({user_email})."
+                else:
+                    order_list = "\n".join([f"- **Order #{o.order_id}**: {o.product} ({o.status})" for o in orders])
+                    reply = f"Here are the orders I found under your account ({user_email}):\n\n{order_list}\n\nIs there a specific one you need help with?"
+            
+            append_to_history(req.conversation_id, "user", req.message, user_email=user_email)
+            append_to_history(req.conversation_id, "assistant", reply, user_email=user_email)
+            
+            return MessageResponse(
+                conversation_id=req.conversation_id,
+                reply=reply,
+                status="completed",
+                intent="list_orders",
+                orders=[{
+                    "order_id": o.order_id,
+                    "product": o.product,
+                    "status": o.status,
+                    "order_date": str(o.order_date),
+                    "amount": o.amount
+                } for o in (orders or [])]
+            )
+        
+        # ROUTE 1.5: Request Cancellation (canceling a previous refund/return/exchange)
+        if intent == "request_cancellation":
+            logger.info("🔀 ROUTE 1.5: Request cancellation detected")
+            if not order_id:
+                save_state(req.conversation_id, {
+                    "conversation_id": req.conversation_id,
+                    "intent": "request_cancellation",
+                    "awaiting_order_id": True,
+                    "entities": {},
+                    "status": "awaiting_input"
+                })
+                return MessageResponse(
+                    conversation_id=req.conversation_id,
+                    reply="I can help you cancel a previous request. Could you please provide your Order ID?",
+                    status="awaiting_input",
+                    intent=intent
+                )
+            
+            success = cancel_existing_request(int(order_id))
+            if success:
+                reply = f"✅ Your previous request for Order #{order_id} has been successfully cancelled. The order status has been reverted to 'Delivered'. You can now submit a new request if needed."
+            else:
+                reply = f"❌ I couldn't find an active approved request for Order #{order_id} to cancel. Please check the order ID or status."
+            
+            return MessageResponse(
+                conversation_id=req.conversation_id,
+                reply=reply,
+                status="completed",
+                intent=intent,
+                order_id=order_id
             )
         
         # ROUTE 2: Check if awaiting confirmation (for cancellations)
@@ -187,7 +317,8 @@ async def handle_message(req: MessageRequest):
                         order_id=pending_order_id,
                         intent=pending_action,
                         product=product_name,
-                        size=od.get("size"),
+                        description=od.get("description"),
+                        quantity=od.get("quantity"),
                         amount=od.get("amount"),
                         status=od.get("status") or od.get("order_status"),
                         exchange_allowed=exchange_allowed,
@@ -238,7 +369,17 @@ async def handle_message(req: MessageRequest):
                     new_state["pending_action"] = None
                     save_state(req.conversation_id, new_state)
 
+                    if resolution_result.get("action") in ["refund", "return", "exchange"]:
+                        record_approved_request(
+                            order_id=pending_order_id,
+                            user_email=user_email or "guest@example.com",
+                            request_type=resolution_result.get("action")
+                        )
+
                     logger.info("✅ API: Action confirmed and processed via resolution LLM")
+                    # Append response to history
+                    append_to_history(req.conversation_id, "user", req.message, user_email=user_email)
+                    append_to_history(req.conversation_id, "assistant", resolution_result.get("message"), user_email=user_email)
                     return MessageResponse(
                         conversation_id=new_state["conversation_id"],
                         reply=new_state.get("reply"),
@@ -297,30 +438,16 @@ async def handle_message(req: MessageRequest):
         if previous_state.get("awaiting_order_id"):
             # Try to extract order ID from this message
             if order_id:
-                # Got the order ID - now process the original intent
-                original_intent = previous_state.get("intent")
+                # Got the order ID - update intent to original and fall through to pipeline
+                intent = previous_state.get("intent")
+                # Modify message so the pipeline's triage picks up the correct intent and order ID
+                req.message = f"{intent} order {order_id}"
                 
-                # Update state and run orchestrator with complete info
-                state = await run_orchestrator(
-                    req.conversation_id,
-                    f"{original_intent} order {order_id}"
-                )
+                # Update state
+                state = previous_state.copy()
                 state["awaiting_order_id"] = False
                 save_state(req.conversation_id, state)
-                
-                return MessageResponse(
-                    conversation_id=state["conversation_id"],
-                    reply=state.get("reply"),
-                    status=state["status"],
-                    intent=state.get("intent"),
-                    urgency=state.get("urgency"),
-                    order_id=state.get("entities", {}).get("order_id"),
-                    user_issue=state.get("entities", {}).get("user_issue"),
-                    triage_confidence=state.get("entities", {}).get("triage_confidence"),
-                    order_details=state.get("entities", {}).get("order_details"),
-                    agents_called=state.get("agents_called"),
-                    current_state=state.get("current_state")
-                )
+                # Let it fall through to ROUTE 4 where action_intents are handled
             else:
                 # Still no order ID - ask again
                 return MessageResponse(
@@ -330,8 +457,8 @@ async def handle_message(req: MessageRequest):
                     intent=previous_state.get("intent")
                 )
         
-        # ROUTE 4: Action-based requests (refund, return, exchange, cancel)
-        action_intents = ["refund", "return", "exchange", "cancel"]
+        # ROUTE 4: Action-based requests (refund, return, exchange, cancel, order_tracking)
+        action_intents = ["refund", "return", "exchange", "cancel", "order_tracking"]
         if intent in action_intents:
             # Check if order ID is missing
             if not order_id:
@@ -370,6 +497,18 @@ async def handle_message(req: MessageRequest):
                     order_id=order_id,
                     buttons=[{"label": "Yes", "value": "yes"}, {"label": "No", "value": "no"}]
                 )
+            
+            # For other action intents with order ID, run the pipeline
+            pipeline_res = await run_pipeline(req)
+            return MessageResponse(
+                conversation_id=req.conversation_id,
+                reply=pipeline_res.resolution_output.message,
+                intent=pipeline_res.triage_output.intent,
+                order_id=pipeline_res.triage_output.order_id,
+                status=pipeline_res.resolution_output.status or "completed",
+                refund_amount=pipeline_res.resolution_output.refund_amount,
+                return_label_url=pipeline_res.resolution_output.return_label_url
+            )
         
         # ROUTE 5: Normal flow - Run the orchestrator
         state = await run_orchestrator(
@@ -426,12 +565,15 @@ async def run_pipeline(req: MessageRequest):
         # Load prior conversation context for continuity
         previous_state = load_state(req.conversation_id) or {}
         previous_entities = previous_state.get("entities", {})
-
-        # Load full conversation history for LLM context
-        history = get_history(req.conversation_id)
         
-        # Record the incoming user message into history immediately
-        append_to_history(req.conversation_id, "user", req.message)
+        # Determine user email
+        user_email = req.user_email or previous_state.get("user_email")
+
+        # Load full conversation history for LLM context - pass user_email for persistence
+        history = get_history(req.conversation_id, user_email=user_email)
+        
+        # Record the incoming user message into history immediately - pass user_email
+        append_to_history(req.conversation_id, "user", req.message, user_email=user_email)
         
         logger.info(f"📂 Loaded previous state for {req.conversation_id}")
         logger.debug(f"Previous entities: {previous_entities}")
@@ -474,7 +616,7 @@ async def run_pipeline(req: MessageRequest):
                     # User didn't provide order ID - ask again
                     print(f"⚠️ ORDER ID NOT PROVIDED - Asking again")
                     _reply = "I didn't catch an order ID in your message. Could you please provide your Order ID? It should be a number like 12345."
-                    append_to_history(req.conversation_id, "assistant", _reply)
+                    append_to_history(req.conversation_id, "assistant", _reply, user_email=user_email)
                     return PipelineResponse(
                         conversation_id=req.conversation_id,
                         message=req.message,
@@ -521,7 +663,7 @@ async def run_pipeline(req: MessageRequest):
         
         print(f"✅ TRIAGE RESULT: intent={triage_output.intent}, order_id={triage_output.order_id}")
         
-        # SPECIAL HANDLING: Policy Information Queries
+        # Step 1.1: SPECIAL HANDLING: Policy Information Queries
         if triage_output.intent == "policy_info":
             print(f"\n🔍 POLICY INFO QUERY DETECTED - Bypassing order pipeline")
             from app.agents.policy.agent import get_policy_information
@@ -541,7 +683,7 @@ async def run_pipeline(req: MessageRequest):
             policy_info = get_policy_information(policy_type)
             
             # Record assistant reply in history and return
-            append_to_history(req.conversation_id, "assistant", policy_info["message"])
+            append_to_history(req.conversation_id, "assistant", policy_info["message"], user_email=user_email)
             # Return a simplified pipeline response for policy info
             return PipelineResponse(
                 conversation_id=req.conversation_id,
@@ -591,7 +733,7 @@ async def run_pipeline(req: MessageRequest):
             else:
                 response_message = friendly_responses["default"]
             
-            append_to_history(req.conversation_id, "assistant", response_message)
+            append_to_history(req.conversation_id, "assistant", response_message, user_email=user_email)
             return PipelineResponse(
                 conversation_id=req.conversation_id,
                 message=req.message,
@@ -617,6 +759,59 @@ async def run_pipeline(req: MessageRequest):
                 ),
                 status="completed"
             )
+
+        # Step 1.4: Check for List Orders
+        if triage_output.intent == "list_orders":
+            print(f"\n📋 LIST ORDERS DETECTED for {user_email}")
+            from app.agents.database.db_service import fetch_orders_by_email
+            
+            if user_email == "guest@example.com":
+                res_msg = "I'm sorry, I can only list orders for regular users. Please log in to see your order history."
+            else:
+                orders = fetch_orders_by_email(user_email)
+                if not orders:
+                    res_msg = f"I couldn't find any orders specifically linked to your account ({user_email})."
+                else:
+                    order_list = "\n".join([f"- **Order #{o.order_id}**: {o.product} ({o.status})" for o in orders])
+                    res_msg = f"Here are the orders I found under your account ({user_email}):\n\n{order_list}\n\nIs there a specific one you need help with?"
+            
+            append_to_history(req.conversation_id, "assistant", res_msg, user_email=user_email)
+            return PipelineResponse(
+                conversation_id=req.conversation_id,
+                message=req.message,
+                triage_output=triage_output,
+                database_output=DatabaseOutput(order_found=False, order_details=None),
+                policy_output=PolicyOutput(policy_type="list_orders", allowed=True, reason="Order list requested", policy_checked=False),
+                resolution_output=ResolutionOutput(action="list_orders", message=res_msg, status="completed"),
+                status="completed"
+            )
+
+        # Step 1.5: Check for Request Cancellation
+        if triage_output.intent == "request_cancellation":
+            print(f"\n🔄 REQUEST CANCELLATION DETECTED - Processing for order {triage_output.order_id}")
+            if triage_output.order_id:
+                try:
+                    success = cancel_existing_request(int(triage_output.order_id))
+                    if success:
+                        res_msg = f"✅ Your previous request for Order #{triage_output.order_id} has been successfully cancelled. The order status has been reverted to 'Delivered'. You can now submit a new request if needed."
+                    else:
+                        res_msg = f"⚠️ I couldn't find an active refund/return request for Order #{triage_output.order_id} that can be cancelled."
+                except Exception as e:
+                    logger.error(f"Error during request cancellation: {e}")
+                    res_msg = "❌ An error occurred while trying to cancel your previous request. Please try again later."
+            else:
+                res_msg = "I need an Order ID to cancel a previous request. Could you please provide it?"
+                
+            append_to_history(req.conversation_id, "assistant", res_msg)
+            return PipelineResponse(
+                conversation_id=req.conversation_id,
+                message=req.message,
+                triage_output=triage_output,
+                database_output=DatabaseOutput(order_found=True if triage_output.order_id else False, order_details=None),
+                policy_output=PolicyOutput(policy_type="cancel_request", allowed=True, reason="Request cancellation handled", policy_checked=False),
+                resolution_output=ResolutionOutput(action="cancel_request", message=res_msg, status="completed"),
+                status="completed"
+            )
         
         # Reuse the last known order ID if not provided in this message
         if not triage_output.order_id:
@@ -627,10 +822,11 @@ async def run_pipeline(req: MessageRequest):
             else:
                 logger.debug("No previous order_id found in conversation state")
         
-        # SPECIAL HANDLING: Action intents without Order ID - Prompt for it
+
+        # Prompt for order ID if still missing
         action_intents_requiring_order = ["order_tracking", "refund", "return", "exchange", "cancel"]
         if triage_output.intent in action_intents_requiring_order and not triage_output.order_id:
-            print(f"\n🔍 ACTION INTENT WITHOUT ORDER ID - Prompting for order ID")
+            print(f"🔍 STILL NO ORDER ID - Prompting user")
             
             # Save state to track that we're awaiting order ID
             # IMPORTANT: Preserve previous entities so we don't lose order_id from earlier turns
@@ -653,7 +849,7 @@ async def run_pipeline(req: MessageRequest):
             
             prompt_message = intent_prompts.get(triage_output.intent, "Could you please provide your Order ID?")
             
-            append_to_history(req.conversation_id, "assistant", prompt_message)
+            append_to_history(req.conversation_id, "assistant", prompt_message, user_email=user_email)
             return PipelineResponse(
                 conversation_id=req.conversation_id,
                 message=req.message,
@@ -690,7 +886,7 @@ async def run_pipeline(req: MessageRequest):
         
         if triage_output.order_id:
             try:
-                db_response = fetch_order_details(triage_output.order_id)
+                db_response = fetch_order_details(triage_output.order_id, user_email=user_email)
                 database_output = DatabaseOutput(
                     order_found=db_response.get("order_found", False),
                     order_details=db_response.get("order_details"),
@@ -795,7 +991,8 @@ async def run_pipeline(req: MessageRequest):
                     order_id=triage_output.order_id,
                     intent=intent,
                     product=product_name,
-                    size=order_details.get("size"),
+                    description=order_details.get("description"),
+                    quantity=order_details.get("quantity"),
                     amount=order_details.get("amount"),
                     status=order_details.get("status") or order_details.get("order_status"),
                     exchange_allowed=policy_output.allowed if policy_output.policy_type in ["exchange", "return"] else None,
@@ -851,7 +1048,7 @@ async def run_pipeline(req: MessageRequest):
                         )
 
                         confirm_message = f"I found Order #{order_id}: {product} (status: {order_details.get('status')}). Are you sure you want to {intent} this order? Please reply 'Yes' to confirm or 'No' to cancel."
-                        append_to_history(req.conversation_id, "assistant", confirm_message)
+                        append_to_history(req.conversation_id, "assistant", confirm_message, user_email=user_email)
 
                         resolution_output = ResolutionOutput(
                             action="CONFIRMATION_REQUIRED",
@@ -879,6 +1076,15 @@ async def run_pipeline(req: MessageRequest):
                 else:
                     # Non-destructive actions proceed immediately
                     resolution_result = run_agent_llm(resolution_input)
+                
+                if resolution_result and resolution_result.get("action") in ["refund", "return", "exchange"]:
+                    # We check if it was actually approved (not denied by policy)
+                    if policy_output.allowed:
+                        record_approved_request(
+                            order_id=int(triage_output.order_id),
+                            user_email=user_email or "guest@example.com",
+                            request_type=resolution_result.get("action")
+                        )
 
                 # ✅ CRM Stage Handling (SAME as /resolve endpoint)
                 try:
@@ -939,12 +1145,13 @@ async def run_pipeline(req: MessageRequest):
                     "intent": triage_output.intent,
                     "urgency": triage_output.urgency,
                     "user_issue": triage_output.user_issue,
+                    "user_email": user_email
                 }
             }
         )
 
         # Save assistant reply into conversation history for future context
-        append_to_history(req.conversation_id, "assistant", resolution_output.message)
+        append_to_history(req.conversation_id, "assistant", resolution_output.message, user_email=user_email)
 
         # Return complete pipeline response
         return PipelineResponse(

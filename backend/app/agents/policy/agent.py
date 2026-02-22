@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from app.orchestrator.guard import agent_guard
 from app.utils.logger import get_logger
+from app.agents.database.db_service import check_existing_request
 
 logger = get_logger(__name__)
 
@@ -185,16 +186,23 @@ async def policy_agent(state):
     intent = state.get("intent")
     order_details = state.get("entities", {}).get("order_details") or state.get("order_details")
     
-    logger.debug(f"Intent: {intent}, Order details present: {order_details is not None}")
-    
-    # Initialize policy result
-    policy_result = {
-        "allowed": False,
-        "reason": "Unknown intent",
-        "policy_checked": False
-    }
-    
-    # Check policy based on intent
+    # 1. Check if an approved request already exists for this order
+    if intent in ["refund", "return", "exchange"]:
+        order_id = order_details.get("order_id") if order_details else None
+        if order_id:
+            existing_request = check_existing_request(order_id)
+            if existing_request:
+                logger.warning(f"Blocking request: order {order_id} already has an approved {existing_request.request_type}")
+                state["entities"]["policy_result"] = {
+                    "allowed": False,
+                    "reason": f"An approved {existing_request.request_type} request already exists for order #{order_id}. Please cancel the previous request before submitting a new one.",
+                    "policy_checked": True,
+                    "policy_type": intent
+                }
+                state["current_state"] = "RESOLUTION"
+                return state
+
+    # 2. Check policy based on intent
     if intent == "refund":
         logger.info("Checking refund policy")
         policy_result = check_refund_policy(order_details)

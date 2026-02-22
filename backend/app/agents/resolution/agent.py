@@ -40,7 +40,7 @@ def generate_exchange_response(state) -> str:
     if policy_result.get("allowed"):
         order_id = order_details.get("order_id")
         product = order_details.get("product")
-        return f"Your exchange request for order #{order_id} ({product}) has been approved! Please let me know what size/color you'd like to exchange it for, and I'll process the exchange. We'll send you a prepaid return label via email for the original item."
+        return f"Your exchange request for order #{order_id} ({product}) has been approved! Please let me know what color or specific details you'd like to exchange it for, and I'll process the exchange. We'll send you a prepaid return label via email for the original item."
     else:
         reason = policy_result.get("reason", "Policy requirements not met")
         return f"I'm sorry, but we cannot process an exchange for this order. Reason: {reason}. Can I help you with anything else?"

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.message import router as message_router
 from app.api.policy import router as policy_router
 from app.api.resolution import router as resolution_router
+from app.api.auth import router as auth_router
 from app.api.policy import lifespan
 from fastapi.staticfiles import StaticFiles
 import os
@@ -28,3 +29,4 @@ app.mount("/labels", StaticFiles(directory=LABEL_DIR), name="labels")
 app.include_router(message_router)
 app.include_router(policy_router)
 app.include_router(resolution_router)
+app.include_router(auth_router)

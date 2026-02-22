@@ -17,10 +17,11 @@ def run_agent_llm(data: ResolutionInput) -> dict:
 
     # ✅ SAFE FALLBACKS (VERY IMPORTANT)
     product_name = data.product or "the product"
-    size_value = data.size if data.size not in [None, 0, "0"] else "N/A"
+    description_value = data.description or ""
+    quantity_value = data.quantity if data.quantity not in [None, 0, "0"] else "N/A"
     order_status = getattr(data, "status", None) or "processing"
     
-    logger.debug(f"Product: {product_name}, Size: {size_value}, Status: {order_status}")
+    logger.debug(f"Product: {product_name}, Quantity: {quantity_value}, Status: {order_status}")
 
     # ----------------- DIRECT INTENTS -----------------
 
@@ -108,7 +109,8 @@ def run_agent_llm(data: ResolutionInput) -> dict:
         file_name = generate_return_label(
             data.order_id,
             product=product_name,
-            size=data.size
+            description=description_value,
+            quantity=data.quantity
         )
         return_label_url = f"http://localhost:8000/labels/{file_name}"
 
@@ -117,8 +119,9 @@ def run_agent_llm(data: ResolutionInput) -> dict:
             "message": (
                 f"✅ Your return request has been approved!\n\n"
                 f"📦 Product: {product_name}\n"
+                f"📝 Description: {description_value}\n" if description_value else ""
                 f"🔢 Order ID: {data.order_id}\n"
-                f"📏 Size: {size_value}\n\n"
+                f"🔢 Quantity: {quantity_value}\n\n"
                 f"📄 A prepaid return label has been generated.\n\n"
                 f"Please print the label and ship the item back.\n"
                 f"💰 Refund will be processed after inspection."
@@ -147,7 +150,8 @@ def run_agent_llm(data: ResolutionInput) -> dict:
         file_name = generate_return_label(
             data.order_id,
             product=product_name,
-            size=data.size
+            description=description_value,
+            quantity=data.quantity
         )
         return_label_url = f"http://localhost:8000/labels/{file_name}"
         return {
@@ -155,8 +159,9 @@ def run_agent_llm(data: ResolutionInput) -> dict:
             "message": (
                 f"✅ Your exchange request has been approved!\n\n"
                 f"📦 Product: {product_name}\n"
+                f"📝 Description: {description_value}\n" if description_value else ""
                 f"🔢 Order ID: {data.order_id}\n"
-                f"📏 Size: {size_value}\n\n"
+                f"🔢 Quantity: {quantity_value}\n\n"
                 f"📄 A prepaid return label has been generated.\n\n"
                 f"Please send the original item back.\n\n"
                 f"🔁 Once received, we will ship your replacement item.\n\n"

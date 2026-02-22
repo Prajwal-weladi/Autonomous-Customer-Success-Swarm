@@ -2,13 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { Toaster, toast } from 'react-hot-toast';
 import Sidebar from './components/Sidebar';
 import ChatWindow from './components/ChatWindow';
-import { sendPipelineMessage, sendMessage as sendBasicMessage } from './api/client';
+import Auth from './components/Auth';
+import { sendPipelineMessage, sendMessage as sendBasicMessage, getUserHistory } from './api/client';
 import logger from './utils/logger';
 
 const App = () => {
   const [conversations, setConversations] = useState([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [user, setUser] = useState(null);
+
+  // Check for existing session
+  useEffect(() => {
+    const savedUser = localStorage.getItem('user');
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
+    }
+  }, []);
 
   // Initialize first conversation
   useEffect(() => {
@@ -66,8 +76,66 @@ const App = () => {
     toast.error('Chat deleted');
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setUser(null);
+    setConversations([]);
+    createNewChat();
+    toast.success('Logged out successfully');
+  };
+
+  const handleAuthSuccess = async (userData) => {
+    setUser(userData);
+    setIsLoading(true);
+    try {
+      const history = await getUserHistory(userData.email);
+      if (history && history.length > 0) {
+        // Group by conversation_id
+        const grouped = history.reduce((acc, msg) => {
+          const cid = msg.conversation_id;
+          if (!acc[cid]) {
+            acc[cid] = {
+              conversation_id: cid,
+              title: `Chat ${Object.keys(acc).length + 1}`,
+              messages: [],
+              status: 'active',
+              created_at: new Date().toISOString()
+            };
+          }
+          acc[cid].messages.push({
+            role: msg.role,
+            content: msg.content,
+            timestamp: new Date().toISOString()
+          });
+
+          // Update title based on first user message
+          if (msg.role === 'user' && acc[cid].messages.length <= 2) {
+            acc[cid].title = msg.content.substring(0, 30) + (msg.content.length > 30 ? '...' : '');
+          }
+
+          return acc;
+        }, {});
+
+        const convArray = Object.values(grouped);
+        setConversations(convArray);
+        setActiveIndex(convArray.length - 1);
+        logger.info('Restored chat history', convArray.length);
+      } else {
+        createNewChat();
+      }
+    } catch (error) {
+      logger.error('Failed to load history', error);
+      toast.error('Could not load chat history');
+      createNewChat();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSendMessage = async (content) => {
     const activeConv = conversations[activeIndex];
+    const userEmail = user?.email; // Link message to authenticated user
     const userMsg = {
       role: 'user',
       content,
@@ -84,9 +152,9 @@ const App = () => {
       // Determine which endpoint to use (simplified logic from Streamlit version)
       let response;
       if (activeConv.status === 'awaiting_confirmation') {
-        response = await sendBasicMessage(activeConv.conversation_id, content);
+        response = await sendBasicMessage(activeConv.conversation_id, content, userEmail);
       } else {
-        response = await sendPipelineMessage(activeConv.conversation_id, content);
+        response = await sendPipelineMessage(activeConv.conversation_id, content, userEmail);
       }
 
       const assistantMsg = {
@@ -124,6 +192,19 @@ const App = () => {
     }
   };
 
+  const handleMyOrders = () => {
+    handleSendMessage('List my orders');
+  };
+
+  if (!user) {
+    return (
+      <>
+        <Toaster position="top-right" />
+        <Auth onAuthSuccess={handleAuthSuccess} />
+      </>
+    );
+  }
+
   if (conversations.length === 0) return null;
 
   return (
@@ -146,6 +227,9 @@ const App = () => {
         onNewChat={createNewChat}
         onSelectChat={selectChat}
         onDeleteChat={deleteChat}
+        user={user}
+        onLogout={handleLogout}
+        onMyOrders={handleMyOrders}
       />
 
       <main className="flex-1 relative">

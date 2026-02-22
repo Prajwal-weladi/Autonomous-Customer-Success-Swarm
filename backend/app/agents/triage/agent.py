@@ -19,6 +19,7 @@ GREETING_PHRASES = [
 ]
 
 INTENT_RULES = {
+    "list_orders": ["list my orders", "my orders", "show orders", "all orders", "recent orders", "my history", "what did i buy", "show my purchases", "order history", "show my order history", "list all", "purchased by me", "list", "purchased", "all my order", "bought"],
     "policy_info": [
         "policy", "policies",
         "refund policy", "return policy", "exchange policy",
@@ -33,7 +34,7 @@ INTENT_RULES = {
     "refund": ["refund", "money back", "get my money"],
     "return": ["return", "send back", "send it back", "don't want"],
     "exchange": ["exchange", "replace", "swap", "different size", "different color"],
-    "order_tracking": ["where is my order", "track", "order status", "hasn't arrived", "not received", "check status", "check my order", "status of order", "status for order"],
+    "order_tracking": ["where is my order", "track", "order status", "hasn't arrived", "not received", "check status", "check my order", "status of order", "status for order", "the status", "give me the status", "check the status", "status", "check status", "where is #", "latest update", "order details", "info of my order"],
     "complaint": ["bad", "worst", "terrible", "not happy", "angry", "disappointed", "poor quality"],
     "technical_issue": ["not working", "error", "bug", "broken", "defective"],
 }
@@ -170,18 +171,17 @@ def run_triage(message: str, history: list | None = None) -> dict:
     order_id = extract_order_id(message) or extract_order_id(full_context)
     urgency = rule_based_urgency(text)
 
-    # ── Check the CURRENT message alone for greeting/general classification ──
+    # ── Check the CURRENT message alone for greeting/general/list_orders classification ──
     # This must run before the LLM so it cannot be overridden.
     message_intent = rule_based_intent(message)
-    if message_intent == "general_question":
+    action_intents = ["return", "refund", "cancel", "exchange"]
+    if message_intent in ["general_question", "list_orders", "order_tracking", "policy_info"] + action_intents:
         # Still include the order_id if one was found in the message
-        # (e.g. "296842434273 this is" — 3 words, no keywords → general_question,
-        #  but the number IS an order ID we need to pass along)
-        logger.info("⚡ TRIAGE: Message detected as greeting/general — skipping LLM, returning general_question")
+        logger.info(f"⚡ TRIAGE: Message detected as {message_intent} — skipping LLM")
         return {
-            "intent": "general_question",
+            "intent": message_intent,
             "urgency": "normal",
-            "order_id": order_id,   # ← use the extracted value, not None
+            "order_id": order_id,
             "confidence": 0.90,
             "user_issue": message,
         }

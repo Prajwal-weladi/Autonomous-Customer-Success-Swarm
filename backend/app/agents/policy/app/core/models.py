@@ -125,7 +125,8 @@ class OrderDetails(BaseModel):
     
     order_id: int
     product: str
-    size: Optional[int] = None
+    description: Optional[str] = None
+    quantity: Optional[int] = None
     order_date: str  # Format: "YYYY-MM-DD"
     delivered_date: Optional[str] = None  # Format: "YYYY-MM-DD" or "None"
     status: str  # e.g., "Shipped", "Delivered", "Processing"
@@ -148,7 +149,8 @@ class PolicyQueryInput(BaseModel):
                 "order_details": {
                     "order_id": 7847,
                     "product": "Puma Jacket",
-                    "size": 40,
+                    "description": "Black winter jacket with hood",
+                    "quantity": 1,
                     "order_date": "2026-01-20",
                     "delivered_date": "2026-01-25",
                     "status": "Delivered"
@@ -194,7 +196,8 @@ class PolicyQueryRequest(BaseModel):
                 "order_details": {
                     "order_id": 7847,
                     "product": "Puma Jacket",
-                    "size": 40,
+                    "description": "Black winter jacket with hood",
+                    "quantity": 1,
                     "order_date": "2026-01-20",
                     "delivered_date": "2026-01-25",
                     "status": "Delivered"

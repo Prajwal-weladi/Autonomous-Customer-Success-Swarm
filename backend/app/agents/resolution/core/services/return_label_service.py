@@ -9,8 +9,10 @@ os.makedirs(LABEL_DIR, exist_ok=True)
 
 def generate_return_label(
     order_id: str,
-    product: str = None,
-    size: int = None,
+    product: str,
+    description: str = None,
+    quantity: int = None,
+    amount: int = None,
     message: str = None,
     request: Request = None
 ) -> str:
@@ -95,8 +97,12 @@ def generate_return_label(
     add_table_row("Order ID", f"ORD-{order_id}", stripe=False)
     if product:
         add_table_row("Product", product, stripe=True)
-    if size:
-        add_table_row("Size/Spec", str(size), stripe=False)
+    if description:
+        add_table_row("Description", description, stripe=False)
+    if quantity:
+        add_table_row("Quantity", str(quantity), stripe=True if description else False)
+    if amount:
+        add_table_row("Amount", f"${amount/100:.2f}", stripe=False if not quantity else True)
     add_table_row("Return Code", f"RMA-{random.randint(1000, 9999)}", stripe=product is not None)
 
     pdf.ln(10)

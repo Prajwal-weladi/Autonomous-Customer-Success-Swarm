@@ -3,6 +3,8 @@ In-memory conversation state storage.
 For production, replace with Redis, PostgreSQL, or other persistent storage.
 """
 from app.utils.logger import get_logger
+from app.agents.database.db_service import save_chat_message, get_chat_history_by_email
+from typing import Optional
 
 logger = get_logger(__name__)
 
@@ -69,27 +71,38 @@ def get_all_conversations():
     return conversations
 
 
-def get_history(conversation_id: str) -> list[dict]:
+def get_history(conversation_id: str, user_email: Optional[str] = None) -> list[dict]:
     """
     Return the message history for a conversation.
+    If user_email is provided, attempts to load from DB.
 
     Returns:
         list of dicts with 'role' ('user' | 'assistant') and 'content' keys.
     """
+    if user_email:
+        db_history = get_chat_history_by_email(user_email)
+        if db_history:
+            return db_history
+            
     return _HISTORY.get(conversation_id, [])
 
 
-def append_to_history(conversation_id: str, role: str, content: str, max_turns: int = 20):
+def append_to_history(conversation_id: str, role: str, content: str, user_email: Optional[str] = None, max_turns: int = 20):
     """
     Append a single turn to the conversation history.
     Caps the stored history at *max_turns* messages (oldest dropped first).
+    If user_email is provided, also saves to DB.
 
     Args:
         conversation_id: Unique identifier for the conversation
         role: 'user' or 'assistant'
         content: The message text
+        user_email: Optional user email for persistent storage
         max_turns: Maximum number of messages to retain (default 20)
     """
+    if user_email:
+        save_chat_message(user_email, role, content, conversation_id)
+
     if conversation_id not in _HISTORY:
         _HISTORY[conversation_id] = []
     _HISTORY[conversation_id].append({"role": role, "content": content})
