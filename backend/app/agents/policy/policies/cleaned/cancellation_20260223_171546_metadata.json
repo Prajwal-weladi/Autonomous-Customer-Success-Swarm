@@ -1,0 +1,15 @@
+{
+  "policy_id": "cancellation_20260223_171546",
+  "policy_domain": "cancellation",
+  "title": "Flipkart Cancellation and Refund Policy",
+  "source_url": "https://healthplus.flipkart.com/pages/view/return-cancellation-and-refund-policy",
+  "scrape_timestamp": "2026-02-23T17:15:46.476732",
+  "metadata": {
+    "policy_key": "cancellation",
+    "scrape_date": "2026-02-23T17:15:46.476732",
+    "content_length": 0,
+    "html_length": 1
+  },
+  "raw_file": "D:\\projects\\Autonomous-Customer-Success-Swarm\\backend\\app\\agents\\policy\\policies\\raw\\cancellation_20260223_171546.html",
+  "cleaned_file": "D:\\projects\\Autonomous-Customer-Success-Swarm\\backend\\app\\agents\\policy\\policies\\cleaned\\cancellation_20260223_171546.txt"
+}

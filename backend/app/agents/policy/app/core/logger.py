@@ -3,60 +3,59 @@ Logging configuration for the Policy RAG Agent.
 """
 import logging
 import sys
-from pathlib import Path
 from typing import Optional
-
-from .config import settings
 
 
 def setup_logger(
     name: str,
-    level: Optional[str] = None,
-    log_file: Optional[Path] = None
+    level: int = logging.INFO,
+    format_string: Optional[str] = None
 ) -> logging.Logger:
     """
     Setup and configure a logger instance.
     
     Args:
         name: Logger name (typically __name__)
-        level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-        log_file: Optional path to log file
+        level: Logging level (default: INFO)
+        format_string: Custom format string (optional)
     
     Returns:
         Configured logger instance
     """
     logger = logging.getLogger(name)
     
-    # Set level
-    log_level = level or settings.LOG_LEVEL
-    logger.setLevel(getattr(logging, log_level.upper()))
-    
     # Prevent duplicate handlers
     if logger.handlers:
         return logger
     
+    logger.setLevel(level)
+    
     # Console handler
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(getattr(logging, log_level.upper()))
+    console_handler.setLevel(level)
     
     # Formatter
+    if format_string is None:
+        format_string = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    
     formatter = logging.Formatter(
-        fmt="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        fmt=format_string,
         datefmt="%Y-%m-%d %H:%M:%S"
     )
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
     
-    # File handler (optional)
-    if log_file:
-        log_file.parent.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(getattr(logging, log_level.upper()))
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
-    
     return logger
 
 
-# Default application logger
-app_logger = setup_logger("policy_rag_agent")
+def get_logger(name: str) -> logging.Logger:
+    """
+    Get or create a logger for the specified module.
+    
+    Args:
+        name: Logger name (typically __name__ of the module)
+    
+    Returns:
+        Logger instance
+    """
+    return setup_logger(name)

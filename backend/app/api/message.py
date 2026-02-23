@@ -60,6 +60,7 @@ class MessageResponse(BaseModel):
     return_label_url: Optional[str] = None
     refund_amount: Optional[int] = None
     orders: Optional[list] = None
+    policy_info: Optional[Dict[str, Any]] = None
 
 
 class TriageOutput(BaseModel):

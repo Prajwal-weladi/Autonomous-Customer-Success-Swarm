@@ -132,11 +132,6 @@ const MessageBubble = ({ message, onSendMessage, isLastMessage }) => {
                                         <Info size={10} /> {pipelineData.triage_output.intent}
                                     </span>
                                 )}
-                                {pipelineData.triage_output?.urgency && (
-                                    <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-orange-500/10 text-[10px] text-orange-400 border border-orange-500/20">
-                                        <AlertCircle size={10} /> {pipelineData.triage_output.urgency}
-                                    </span>
-                                )}
                                 {pipelineData.database_output?.order_found && (
                                     <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-green-500/10 text-[10px] text-green-400 border border-green-500/20">
                                         <Package size={10} /> Sync Verified

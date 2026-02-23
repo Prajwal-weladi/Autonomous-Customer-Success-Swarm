@@ -1,187 +1,80 @@
-from datetime import datetime, timedelta
 from app.orchestrator.guard import agent_guard
 from app.utils.logger import get_logger
 from app.agents.database.db_service import check_existing_request
+from app.agents.policy.app.core.policy_evaluator import (
+    evaluate_policy_request,
+    get_policy_information,
+    _fallback_policy_info
+)
 
 logger = get_logger(__name__)
 
 
-def get_policy_information(policy_type: str = None) -> dict:
-    """
-    Return policy information for informational queries.
-    Does not require order details - just returns policy rules.
-    
-    Args:
-        policy_type: Type of policy (refund, return, exchange, cancel) or None for general info
-        
-    Returns:
-        dict with policy information
-    """
-    policies = {
-        "refund": {
-            "title": "Refund Policy",
-            "details": "We offer refunds within 30 days of delivery for delivered orders. The order must be in 'Delivered' status. Once approved, refunds are processed within 5-7 business days to your original payment method."
-        },
-        "return": {
-            "title": "Return Policy", 
-            "details": "Returns are accepted within 45 days of delivery. The order must be in 'Delivered' status. We provide a prepaid return label via email. Once we receive and inspect the item, we'll process your refund."
-        },
-        "exchange": {
-            "title": "Exchange Policy",
-            "details": "Exchanges follow the same rules as returns - available within 45 days of delivery. You can exchange for a different size or color. We'll send you a prepaid return label for the original item."
-        },
-        "cancel": {
-            "title": "Cancellation Policy",
-            "details": "Orders can be cancelled before they deliver. Once an order is delivered, you'll need to request a return or refund instead. Cancellations are processed immediately."
-        }
-    }
-    
-    if policy_type and policy_type in policies:
-        return {
-            "policy_type": policy_type,
-            "message": f"**{policies[policy_type]['title']}**\n\n{policies[policy_type]['details']}"
-        }
-    
-    # Return all policies if no specific type requested
-    all_policies = "\n\n".join([
-        f"**{p['title']}**\n{p['details']}" 
-        for p in policies.values()
-    ])
-    
-    return {
-        "policy_type": "all",
-        "message": f"Here are our customer service policies:\n\n{all_policies}\n\nIf you need help with a specific order, please provide your order ID and I'll be happy to assist!"
-    }
-
-
 def check_refund_policy(order_details: dict) -> dict:
     """
-    Check if order is eligible for refund based on policy rules.
+    Check if order is eligible for refund (LLM-based evaluation).
     
-    Policy Rules:
-    1. Order must be delivered
-    2. Refund window is 30 days from delivery
-    3. Status must not be "Cancelled" or "Refunded"
+    This function has been migrated to use LLM-based evaluation
+    instead of hard-coded rule-based logic.
+    
+    Args:
+        order_details: Order information
+        
+    Returns:
+        dict with allowed (bool) and reason (str)
     """
-    if not order_details:
-        return {
-            "allowed": False,
-            "reason": "No order details available"
-        }
-    
-    status = order_details.get("status")
-    delivered_date = order_details.get("delivered_date")
-    
-    # Check if order is delivered
-    if status != "Delivered":
-        return {
-            "allowed": False,
-            "reason": f"Order status is '{status}'. Refunds only available for delivered orders."
-        }
-    
-    # Check if delivered_date is available
-    if not delivered_date:
-        return {
-            "allowed": False,
-            "reason": "Delivery date not found"
-        }
-    
-    # Check if within 30-day window
-    try:
-        delivery_date = datetime.strptime(delivered_date, "%Y-%m-%d")
-        days_since_delivery = (datetime.now() - delivery_date).days
-        
-        if days_since_delivery > 30:
-            return {
-                "allowed": False,
-                "reason": f"Refund window expired ({days_since_delivery} days since delivery, limit is 30 days)"
-            }
-        
-        return {
-            "allowed": True,
-            "reason": f"Order eligible for refund ({days_since_delivery} days since delivery)"
-        }
-        
-    except Exception as e:
-        return {
-            "allowed": False,
-            "reason": f"Error checking refund eligibility: {str(e)}"
-        }
+    return evaluate_policy_request("refund", order_details)
 
 
 def check_return_policy(order_details: dict) -> dict:
     """
-    Check if order is eligible for return.
+    Check if order is eligible for return (LLM-based evaluation).
     
-    Policy Rules:
-    1. Return window is 45 days from delivery
-    2. Order must be delivered
+    This function has been migrated to use LLM-based evaluation
+    instead of hard-coded rule-based logic.
+    
+    Args:
+        order_details: Order information
+        
+    Returns:
+        dict with allowed (bool) and reason (str)
     """
-    if not order_details:
-        return {
-            "allowed": False,
-            "reason": "No order details available"
-        }
-    
-    status = order_details.get("status")
-    delivered_date = order_details.get("delivered_date")
-    
-    if status != "Delivered":
-        return {
-            "allowed": False,
-            "reason": f"Order status is '{status}'. Returns only available for delivered orders."
-        }
-    
-    if not delivered_date:
-        return {
-            "allowed": False,
-            "reason": "Delivery date not found"
-        }
-    
-    try:
-        delivery_date = datetime.strptime(delivered_date, "%Y-%m-%d")
-        days_since_delivery = (datetime.now() - delivery_date).days
-        
-        if days_since_delivery > 45:
-            return {
-                "allowed": False,
-                "reason": f"Return window expired ({days_since_delivery} days since delivery, limit is 45 days)"
-            }
-        
-        return {
-            "allowed": True,
-            "reason": f"Order eligible for return ({days_since_delivery} days since delivery)"
-        }
-        
-    except Exception as e:
-        return {
-            "allowed": False,
-            "reason": f"Error checking return eligibility: {str(e)}"
-        }
+    return evaluate_policy_request("return", order_details)
 
 
 def check_exchange_policy(order_details: dict) -> dict:
     """
-    Check if order is eligible for exchange.
-    Same rules as return policy.
+    Check if order is eligible for exchange (LLM-based evaluation).
+    
+    This function has been migrated to use LLM-based evaluation
+    instead of hard-coded rule-based logic.
+    
+    Args:
+        order_details: Order information
+        
+    Returns:
+        dict with allowed (bool) and reason (str)
     """
-    return check_return_policy(order_details)
+    return evaluate_policy_request("exchange", order_details)
 
 
 @agent_guard("policy")
 async def policy_agent(state):
     """
-    Policy Agent: Checks if the requested action is allowed based on company policies.
+    Policy Agent (LLM-Based): Evaluates customer requests against company policies using an LLM.
     
     Expects:
         - state["intent"] (from triage)
         - state["entities"]["order_details"] (from database)
         
     Sets:
-        - state["entities"]["policy_result"] with policy check result
+        - state["entities"]["policy_result"] with policy evaluation result
         - state["current_state"] to "RESOLUTION" on success
+        
+    The agent uses LLM-based evaluation for policy decisions instead of hard-coded rules.
+    This allows for more nuanced policy interpretation and better explanation of decisions.
     """
-    logger.info("🔒 POLICY AGENT: Starting policy validation")
+    logger.info("🔒 POLICY AGENT (LLM-BASED): Starting policy evaluation")
     
     intent = state.get("intent")
     order_details = state.get("entities", {}).get("order_details") or state.get("order_details")
@@ -202,100 +95,58 @@ async def policy_agent(state):
                 state["current_state"] = "RESOLUTION"
                 return state
 
-    # 2. Check policy based on intent
+    # 2. Evaluate policy based on intent (now using LLM)
     if intent == "refund":
-        logger.info("Checking refund policy")
-        policy_result = check_refund_policy(order_details)
-        policy_result["policy_checked"] = True
-        policy_result["policy_type"] = "refund"
-        logger.info(f"✅ POLICY: Refund {'ALLOWED' if policy_result['allowed'] else 'DENIED'} - {policy_result['reason']}")
+        logger.info("Evaluating refund policy using LLM")
+        policy_result = evaluate_policy_request("refund", order_details)
+        logger.info(f"✅ POLICY (LLM): Refund {'ALLOWED' if policy_result.get('allowed') else 'DENIED'} - {policy_result.get('reason')}")
         
     elif intent == "return":
-        logger.info("Checking return policy")
-        policy_result = check_return_policy(order_details)
-        policy_result["policy_checked"] = True
-        policy_result["policy_type"] = "return"
-        logger.info(f"✅ POLICY: Return {'ALLOWED' if policy_result['allowed'] else 'DENIED'} - {policy_result['reason']}")
+        logger.info("Evaluating return policy using LLM")
+        policy_result = evaluate_policy_request("return", order_details)
+        logger.info(f"✅ POLICY (LLM): Return {'ALLOWED' if policy_result.get('allowed') else 'DENIED'} - {policy_result.get('reason')}")
         
     elif intent == "exchange":
-        logger.info("Checking exchange policy")
-        policy_result = check_exchange_policy(order_details)
-        policy_result["policy_checked"] = True
-        policy_result["policy_type"] = "exchange"
-        logger.info(f"✅ POLICY: Exchange {'ALLOWED' if policy_result['allowed'] else 'DENIED'} - {policy_result['reason']}")
+        logger.info("Evaluating exchange policy using LLM")
+        policy_result = evaluate_policy_request("exchange", order_details)
+        logger.info(f"✅ POLICY (LLM): Exchange {'ALLOWED' if policy_result.get('allowed') else 'DENIED'} - {policy_result.get('reason')}")
         
     elif intent == "cancel":
-        logger.info("Checking cancellation policy")
+        logger.info("Evaluating cancellation policy using LLM")
+        policy_result = evaluate_policy_request("cancel", order_details)
+        logger.info(f"✅ POLICY (LLM): Cancellation {'ALLOWED' if policy_result.get('allowed') else 'DENIED'} - {policy_result.get('reason')}")
 
-        # Get safe status
-        status = (order_details.get("status") if order_details else "") or ""
-        status = status.strip()
-    
-        logger.debug(f"Order status: {status}")
-    
-        # ❌ Already cancelled
-        if status.lower() == "cancelled":
-            policy_result = {
-                "allowed": False,
-                "reason": "Order has already been cancelled.",
-                "policy_checked": True,
-                "policy_type": "cancel"
-            }
-            logger.info("❌ POLICY: Cancellation DENIED - Already cancelled")
-    
-        # ❌ Already delivered
-        elif status.lower() == "delivered":
-            policy_result = {
-                "allowed": False,
-                "reason": "Order has already been delivered. Please request a return instead.",
-                "policy_checked": True,
-                "policy_type": "cancel"
-            }
-            logger.info("❌ POLICY: Cancellation DENIED - Order delivered")
-    
-        # ✅ Allow otherwise
-        else:
-            policy_result = {
-                "allowed": True,
-                "reason": f"Order is eligible for cancellation (current status: {status}).",
-                "policy_checked": True,
-                "policy_type": "cancel"
-            }
-            logger.info("✅ POLICY: Cancellation ALLOWED")
-    if intent in ["refund", "return", "exchange", "cancel"]:
-        state["entities"]["policy_result"] = policy_result
-        state["current_state"] = "RESOLUTION"
-        return state
-        
     elif intent == "order_tracking":
-        logger.info("Order tracking - no policy check required")
-        state["entities"]["policy_result"] = {
+        logger.info("Order tracking - no policy evaluation required")
+        policy_result = {
             "allowed": True,
             "reason": "No policy validation required for order tracking",
             "policy_checked": False,
             "policy_type": None
         }
-        state["current_state"] = "RESOLUTION"
-        return state
-
-    # General/support intents that do not require policy validation
-    if intent in ["complaint", "technical_issue", "general_question"]:
-        logger.info(f"No policy check required for intent '{intent}'")
-        state["entities"]["policy_result"] = {
+        
+    elif intent in ["complaint", "technical_issue", "general_question"]:
+        logger.info(f"No policy evaluation required for intent '{intent}'")
+        policy_result = {
             "allowed": True,
             "reason": f"No policy validation required for '{intent}'",
             "policy_checked": False,
             "policy_type": None
         }
-        state["current_state"] = "RESOLUTION"
-        return state
-
-    # Default: allow resolution to handle any remaining intents safely
-    state["entities"]["policy_result"] = {
-        "allowed": True,
-        "reason": f"No policy validation required for '{intent}'",
-        "policy_checked": False,
-        "policy_type": None
-    }
+        
+    else:
+        # Default: allow resolution to handle any remaining intents safely
+        logger.debug(f"Unrecognized intent '{intent}', allowing resolution to handle")
+        policy_result = {
+            "allowed": True,
+            "reason": f"No policy validation required for '{intent}'",
+            "policy_checked": False,
+            "policy_type": None
+        }
+    
+    # Set the policy result in state
+    state["entities"]["policy_result"] = policy_result
     state["current_state"] = "RESOLUTION"
+    
+    logger.info("🔄 POLICY: Moving to RESOLUTION state")
     return state
