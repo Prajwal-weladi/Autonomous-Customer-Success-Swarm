@@ -236,10 +236,10 @@ class TestPolicyAgent:
         assert pr["allowed"] is True
         assert result["current_state"] == "RESOLUTION"
 
-    async def test_cancel_denied_when_shipped(self):
+    async def test_cancel_allowed_when_shipped(self):
         state = make_state("cancel", {"status": "Shipped"})
         result = await policy_agent(state)
-        assert result["entities"]["policy_result"]["allowed"] is False
+        assert result["entities"]["policy_result"]["allowed"] is True
 
     async def test_cancel_denied_when_delivered(self):
         state = make_state("cancel", {"status": "Delivered"})

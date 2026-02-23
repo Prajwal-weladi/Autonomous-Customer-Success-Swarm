@@ -8,7 +8,9 @@ from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
 
 # Ensure the backend root is importable
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+backend_dir = os.path.join(base_dir, "backend")
+sys.path.insert(0, backend_dir)
 
 
 # ──────────────────────── date helpers ────────────────────────────────────────

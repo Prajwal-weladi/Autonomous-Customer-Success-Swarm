@@ -20,6 +20,7 @@ INTENT_RULES = {
         "about refund", "about return", "about exchange", "about cancel",
         "for refund", "for return", "for exchange",
         "refund rules", "return rules", "cancellation rules",
+        "about refund policy", "about return policy", "about exchange policy", "about cancellation policy",
     ],
     "cancel": ["cancel order", "cancel my order", "cancel this order", "want to cancel"],
     "refund": ["refund", "money back", "get my money"],
