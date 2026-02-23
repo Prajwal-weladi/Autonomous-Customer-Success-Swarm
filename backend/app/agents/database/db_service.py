@@ -180,7 +180,13 @@ def record_approved_request(order_id: int, user_email: str, request_type: str):
         # Update order status
         order = db.query(Orders).filter(Orders.order_id == oid_int).first()
         if order:
-            order.status = f"{request_type.capitalize()} Processed"
+           # Update order status
+            order = db.query(Orders).filter(Orders.order_id == oid_int).first()
+            if order:
+                if request_type.lower() in ["cancel", "cancellation"]:
+                    order.status = "Cancelled"   # ✅ FIX ONLY FOR CANCEL
+                else:
+                    order.status = f"{request_type.capitalize()} Processed"
             
         db.commit()
         return True
@@ -203,7 +209,7 @@ def cancel_existing_request(order_id: int):
         ).first()
         
         if request:
-            request.status = "canceled"
+            request.status = "cancelled"
             
             # Revert order status - we'll set it back to 'Delivered' or 'Shipped' based on history
             # For simplicity, if it was a return/refund/exchange, it was likely 'Delivered'

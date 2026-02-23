@@ -426,7 +426,7 @@ async def handle_message(req: MessageRequest):
                     new_state["pending_action"] = None
                     save_state(req.conversation_id, new_state)
 
-                    if resolution_result.get("action") in ["refund", "return", "exchange"]:
+                    if resolution_result.get("action") in ["refund", "return", "exchange", "cancel"]:
                         record_approved_request(
                             order_id=pending_order_id,
                             user_email=user_email or "guest@example.com",
@@ -1220,7 +1220,7 @@ async def run_pipeline(req: MessageRequest):
                     # Non-destructive actions proceed immediately
                     resolution_result = run_agent_llm(resolution_input)
                 
-                if resolution_result and resolution_result.get("action") in ["refund", "return", "exchange"]:
+                if resolution_result and resolution_result.get("action") in ["refund", "return", "exchange", "cancel"]:
                     # We check if it was actually approved (not denied by policy)
                     if policy_output.allowed:
                         record_approved_request(
