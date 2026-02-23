@@ -24,7 +24,7 @@ async def database_agent(state):
         logger.warning("⚠️ DATABASE: No order ID found")
 
         # ✅ Some intents don't require order
-        if intent in ["general_question", "technical_issue"]:
+        if intent in ["general_question", "technical_issue", "complaint"]:
             logger.info(f"✅ DATABASE: Intent '{intent}' doesn't require order lookup")
             state["entities"]["order_details"] = None
             state["order_details"] = None

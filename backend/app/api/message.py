@@ -18,6 +18,26 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
+def _needs_history(message: str) -> bool:
+    """Decide when to pass prior history into triage.
+
+    Prefer current message only; use history when the user is referential or brief.
+    """
+    text = (message or "").strip().lower()
+    if not text:
+        return False
+
+    # Short replies or standalone IDs often rely on context.
+    if len(text.split()) <= 3:
+        return True
+
+    if text.isdigit():
+        return True
+
+    referential_markers = ["that", "it", "same", "previous", "earlier", "above", "this one"]
+    return any(marker in text for marker in referential_markers)
+
+
 class MessageRequest(BaseModel):
     conversation_id: str
     message: str
@@ -115,8 +135,8 @@ async def handle_message(req: MessageRequest):
         
         # Quick triage to determine intent
         from app.agents.triage.agent import run_triage
-        # Load history for triage context - pass user_email for persistence
-        history = get_history(req.conversation_id, user_email=req.user_email)
+        # Load history only if the current message is referential/short
+        history = get_history(req.conversation_id, user_email=req.user_email) if _needs_history(req.message) else None
         triage_result = run_triage(req.message, history=history)
         intent = triage_result.get("intent")
         order_id = triage_result.get("order_id")
@@ -278,9 +298,46 @@ async def handle_message(req: MessageRequest):
         if previous_state.get("awaiting_confirmation"):
             logger.info(f"🔀 ROUTE 2: Awaiting confirmation state detected")
             message_lower = req.message.lower()
+            pending_action = previous_state.get("pending_action") or previous_state.get("intent")
+            pending_order_id = previous_state.get("entities", {}).get("order_id")
+
+            confirmation_switched = False
+
+            # If user mentions a product while confirming, try to resolve to a different order.
+            if user_email and user_email != "guest@example.com":
+                try:
+                    from app.agents.database.db_service import fetch_orders_by_email
+
+                    user_orders = fetch_orders_by_email(user_email)
+                    msg_lower = req.message.lower()
+                    matches = []
+                    for order in user_orders or []:
+                        prod_lower = (order.product or "").lower()
+                        if prod_lower and (prod_lower in msg_lower or any(word in msg_lower for word in prod_lower.split() if len(word) > 3)):
+                            matches.append(order)
+
+                    if len(matches) == 1:
+                        resolved_order = matches[0]
+                        if str(resolved_order.order_id) != str(pending_order_id):
+                            logger.info("User referenced a different product during confirmation - switching order")
+                            # Clear confirmation state and continue with new order
+                            save_state(req.conversation_id, {
+                                **previous_state,
+                                "awaiting_confirmation": False,
+                                "pending_action": None
+                            })
+
+                            intent = pending_action or intent
+                            order_id = str(resolved_order.order_id)
+                            req.message = f"{intent} order {order_id}"
+                            confirmation_switched = True
+                        else:
+                            logger.info("Product mention matches pending order - proceeding with confirmation")
+                except Exception as match_err:
+                    logger.warning(f"Product-based match failed during confirmation: {match_err}")
             
             # Check for confirmation
-            if any(word in message_lower for word in ["yes", "confirm", "proceed", "sure", "ok", "okay"]):
+            if not confirmation_switched and any(word in message_lower for word in ["yes", "confirm", "proceed", "sure", "ok", "okay"]):
                 logger.info("User confirmed action - proceeding")
                 # User confirmed - proceed with the action
                 pending_action = previous_state.get("pending_action")
@@ -417,7 +474,7 @@ async def handle_message(req: MessageRequest):
                     agents_called=state.get("agents_called"),
                     current_state=state.get("current_state")
                 )
-            else:
+            elif not confirmation_switched and any(word in message_lower for word in ["no", "cancel", "stop", "don't", "do not", "nope"]):
                 logger.info("User declined action - cancelling")
                 # User declined - cancel the action
                 save_state(req.conversation_id, {
@@ -433,6 +490,14 @@ async def handle_message(req: MessageRequest):
                     status="completed",
                     intent=previous_state.get("intent")
                 )
+            elif not confirmation_switched:
+                # New request while awaiting confirmation: clear confirmation and continue
+                logger.info("New request detected while awaiting confirmation - clearing confirmation state")
+                save_state(req.conversation_id, {
+                    **previous_state,
+                    "awaiting_confirmation": False,
+                    "pending_action": None
+                })
         
         # ROUTE 3: Check if awaiting order ID
         if previous_state.get("awaiting_order_id"):
@@ -569,8 +634,8 @@ async def run_pipeline(req: MessageRequest):
         # Determine user email
         user_email = req.user_email or previous_state.get("user_email")
 
-        # Load full conversation history for LLM context - pass user_email for persistence
-        history = get_history(req.conversation_id, user_email=user_email)
+        # Load history only when the current message is referential/short
+        history = get_history(req.conversation_id, user_email=user_email) if _needs_history(req.message) else None
         
         # Record the incoming user message into history immediately - pass user_email
         append_to_history(req.conversation_id, "user", req.message, user_email=user_email)
@@ -813,8 +878,59 @@ async def run_pipeline(req: MessageRequest):
                 status="completed"
             )
         
-        # Reuse the last known order ID if not provided in this message
-        if not triage_output.order_id:
+        # Prefer product-name matching over reusing a prior order ID
+        action_intents_requiring_order = ["order_tracking", "refund", "return", "exchange", "cancel"]
+        if triage_output.intent in action_intents_requiring_order and not triage_output.order_id and user_email and user_email != "guest@example.com":
+            try:
+                from app.agents.database.db_service import fetch_orders_by_email
+
+                user_orders = fetch_orders_by_email(user_email)
+                if user_orders:
+                    msg_lower = req.message.lower()
+                    matches = []
+                    for order in user_orders:
+                        prod_lower = (order.product or "").lower()
+                        if prod_lower and (prod_lower in msg_lower or any(word in msg_lower for word in prod_lower.split() if len(word) > 3)):
+                            matches.append(order)
+
+                    if len(matches) == 1:
+                        resolved_order = matches[0]
+                        triage_output.order_id = str(resolved_order.order_id)
+                        req.message = f"{req.message} (Order #{triage_output.order_id})"
+                        logger.info(f"✅ Resolved order by product: #{triage_output.order_id}")
+                    elif len(matches) > 1:
+                        choices = "\n".join([f"- **#{m.order_id}**: {m.product} ({m.status})" for m in matches])
+                        reply = f"I found multiple orders that might match your request:\n\n{choices}\n\nWhich one did you want to resolve?"
+
+                        save_state(req.conversation_id, {
+                            "conversation_id": req.conversation_id,
+                            "intent": triage_output.intent,
+                            "awaiting_order_id": True,
+                            "entities": previous_entities,
+                            "status": "awaiting_input"
+                        })
+                        append_to_history(req.conversation_id, "assistant", reply, user_email=user_email)
+                        return PipelineResponse(
+                            conversation_id=req.conversation_id,
+                            message=req.message,
+                            triage_output=triage_output,
+                            database_output=DatabaseOutput(order_found=False, order_details=None),
+                            policy_output=PolicyOutput(policy_type=None, allowed=False, reason="Order selection required", policy_checked=False),
+                            resolution_output=ResolutionOutput(action="awaiting_order_id", message=reply, status="awaiting_input"),
+                            status="awaiting_input",
+                            orders=[{
+                                "order_id": o.order_id,
+                                "product": o.product,
+                                "status": o.status,
+                                "order_date": str(o.order_date),
+                                "amount": o.amount
+                            } for o in matches]
+                        )
+            except Exception as match_err:
+                logger.warning(f"Product-based match failed: {match_err}")
+
+        # Reuse the last known order ID only for referential messages
+        if not triage_output.order_id and _needs_history(req.message):
             prior_order_id = previous_entities.get("order_id")
             if prior_order_id:
                 logger.info(f"🔄 Reusing order_id from previous conversation: {prior_order_id}")

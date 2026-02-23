@@ -3,6 +3,18 @@ import re
 
 from app.orchestrator.guard import agent_guard
 from app.agents.triage.prompts import TRIAGE_PROMPT
+from app.agents.triage.config import (
+    GREETING_PHRASES,
+    INTENT_RULES,
+    URGENT_WORDS,
+    INFO_SEEKING_PHRASES,
+    ACTION_TOPIC_WORDS,
+    LLM_MODEL,
+    LLM_TEMPERATURE,
+    DEFAULT_CONFIDENCE,
+    FALLBACK_CONFIDENCE,
+    RULE_BASED_CONFIDENCE,
+)
 
 try:
     import ollama
@@ -11,35 +23,14 @@ except ImportError:
     OLLAMA_AVAILABLE = False
     print("Warning: ollama not available, using rule-based triage only")
 
-# Short greetings / chitchat that should always be general_question
-GREETING_PHRASES = [
-    "hi", "hey", "hello", "hey hi", "hi there", "hello there", "good morning",
-    "good afternoon", "good evening", "howdy", "greetings", "sup", "what's up",
-    "how are you", "how can you help", "what can you do", "help me", "help",
-]
+    VALID_INTENTS = set(INTENT_RULES.keys()) | {
+        "policy_info",
+        "request_cancellation",
+        "general_question",
+        "unknown",
+    }
 
-INTENT_RULES = {
-    "list_orders": ["list my orders", "my orders", "show orders", "all orders", "recent orders", "my history", "what did i buy", "show my purchases", "order history", "show my order history", "list all", "purchased by me", "list", "purchased", "all my order", "bought"],
-    "policy_info": [
-        "policy", "policies",
-        "refund policy", "return policy", "exchange policy",
-        "cancellation policy", "cancel policy",
-        "how does", "what is your", "tell me about", "what are the",
-        "explain", "want to know", "like to know", "know about",
-        "about refund", "about return", "about exchange", "about cancel",
-        "for refund", "for return", "for exchange",
-        "refund rules", "return rules", "cancellation rules",
-    ],
-    "cancel": ["cancel order", "cancel my order", "cancel this order", "want to cancel"],
-    "refund": ["refund", "money back", "get my money"],
-    "return": ["return", "send back", "send it back", "don't want"],
-    "exchange": ["exchange", "replace", "swap", "different size", "different color"],
-    "order_tracking": ["where is my order", "track", "order status", "hasn't arrived", "not received", "check status", "check my order", "status of order", "status for order", "the status", "give me the status", "check the status", "status", "check status", "where is #", "latest update", "order details", "info of my order"],
-    "complaint": ["bad", "worst", "terrible", "not happy", "angry", "disappointed", "poor quality"],
-    "technical_issue": ["not working", "error", "bug", "broken", "defective"],
-}
 
-URGENT_WORDS = ["urgent", "now", "immediately", "asap", "emergency", "right now"]
 
 
 def extract_order_id(text: str) -> str | None:
@@ -78,19 +69,6 @@ def extract_order_id(text: str) -> str | None:
     return None
 
 
-# Info-seeking phrases — if paired with any action topic, route to policy_info
-INFO_SEEKING_PHRASES = [
-    "want to know", "like to know", "know about", "know the",
-    "tell me", "explain", "what is", "what are", "how does", "how do",
-    "can you tell", "information about", "info about", "details about",
-    "learn about", "understand",
-]
-
-# Topic words that, when paired with an info-seeking phrase, signal a policy query
-ACTION_TOPIC_WORDS = [
-    "refund", "return", "exchange", "cancel", "cancellation",
-    "policy", "policies", "rules",
-]
 
 
 def rule_based_intent(text: str) -> str | None:
@@ -171,23 +149,10 @@ def run_triage(message: str, history: list | None = None) -> dict:
     order_id = extract_order_id(message) or extract_order_id(full_context)
     urgency = rule_based_urgency(text)
 
-    # ── Check the CURRENT message alone for greeting/general/list_orders classification ──
-    # This must run before the LLM so it cannot be overridden.
+    # Rule-based fallback if LLM fails or is unavailable
     message_intent = rule_based_intent(message)
-    action_intents = ["return", "refund", "cancel", "exchange"]
-    if message_intent in ["general_question", "list_orders", "order_tracking", "policy_info"] + action_intents:
-        # Still include the order_id if one was found in the message
-        logger.info(f"⚡ TRIAGE: Message detected as {message_intent} — skipping LLM")
-        return {
-            "intent": message_intent,
-            "urgency": "normal",
-            "order_id": order_id,
-            "confidence": 0.90,
-            "user_issue": message,
-        }
-    # ────────────────────────────────────────────────────────────────────────
-
-    fallback_intent = message_intent or rule_based_intent(text) or "unknown"
+    rule_intent = message_intent or rule_based_intent(text)
+    fallback_intent = rule_intent or "general_question"
 
     logger.debug(f"Rule-based extraction: intent={fallback_intent}, order_id={order_id}, urgency={urgency}")
 
@@ -198,7 +163,7 @@ def run_triage(message: str, history: list | None = None) -> dict:
             "intent": fallback_intent,
             "urgency": urgency,
             "order_id": order_id,
-            "confidence": 0.60,
+            "confidence": RULE_BASED_CONFIDENCE,
             "user_issue": message
         }
 
@@ -207,9 +172,9 @@ def run_triage(message: str, history: list | None = None) -> dict:
         logger.debug("Attempting LLM-based triage analysis")
         prompt = TRIAGE_PROMPT.format(message=message, history=history_text or "(no prior history)")
         response = ollama.chat(
-            model="qwen2.5:0.5b",
+            model=LLM_MODEL,
             messages=[{"role": "user", "content": prompt}],
-            options={"temperature": 0.1}  # Lower temperature for more consistent output
+            options={"temperature": LLM_TEMPERATURE}  # Lower temperature for more consistent output
         )
 
         output = response.get("message", {}).get("content", "")
@@ -263,8 +228,17 @@ def run_triage(message: str, history: list | None = None) -> dict:
             # Validate and fill in missing fields with fallbacks
             result["order_id"] = result.get("order_id") or order_id
             result["urgency"] = result.get("urgency") or urgency
-            result["intent"] = result.get("intent") or fallback_intent
-            result["confidence"] = result.get("confidence", 0.70)
+            raw_intent = result.get("intent") or fallback_intent
+            if raw_intent not in VALID_INTENTS or raw_intent == "unknown":
+                raw_intent = "general_question"
+
+            # If rules classify as general question, do not let LLM force an action intent.
+            if rule_intent == "general_question" and raw_intent != "general_question":
+                raw_intent = "general_question"
+                result["confidence"] = min(result.get("confidence", DEFAULT_CONFIDENCE), RULE_BASED_CONFIDENCE)
+
+            result["intent"] = raw_intent
+            result["confidence"] = result.get("confidence", DEFAULT_CONFIDENCE)
             result["user_issue"] = result.get("user_issue") or message
             
             logger.info(f"✅ TRIAGE (LLM): intent={result['intent']}, order_id={result['order_id']}, confidence={result['confidence']}")
@@ -278,7 +252,7 @@ def run_triage(message: str, history: list | None = None) -> dict:
                 "intent": fallback_intent,
                 "urgency": urgency,
                 "order_id": order_id,
-                "confidence": 0.50,
+                "confidence": FALLBACK_CONFIDENCE,
                 "user_issue": message
             }
             
@@ -289,7 +263,7 @@ def run_triage(message: str, history: list | None = None) -> dict:
             "intent": fallback_intent,
             "urgency": urgency,
             "order_id": order_id,
-            "confidence": 0.50,
+            "confidence": FALLBACK_CONFIDENCE,
             "user_issue": message
         }
 
@@ -366,7 +340,7 @@ async def triage_agent(state):
 - Detected Intent: {result.get("intent")}
 - Urgency Level: {result.get("urgency", "normal")}
 - Order ID: {result.get("order_id") or "Not found"}
-- Confidence Score: {result.get("confidence", 0.50)}
+- Confidence Score: {result.get("confidence", FALLBACK_CONFIDENCE)}
 """
     
     state["entities"]["triage_summary"] = triage_summary

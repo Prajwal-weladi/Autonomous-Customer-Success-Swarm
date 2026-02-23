@@ -5,7 +5,7 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000/v
 
 const apiClient = axios.create({
     baseURL: BACKEND_URL,
-    timeout: 120000,
+    timeout: 1200000,
 });
 
 // Add a request interceptor to include the JWT token

@@ -10,7 +10,8 @@ DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = int(os.getenv("DB_PORT", "5432"))
 DB_NAME = os.getenv("DB_NAME", "customer_support")
 DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = quote_plus(os.getenv("DB_PASSWORD"))
+DB_PASSWORD = quote_plus(os.getenv("DB_PASSWORD", ""))
+DB_SSLMODE = os.getenv("DB_SSLMODE", "")
 
 DATABASE_URL = (
     f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}"
@@ -18,12 +19,19 @@ DATABASE_URL = (
 )
 
 # Create engine with connection pooling
+connect_args = {}
+if DB_SSLMODE:
+    connect_args["sslmode"] = DB_SSLMODE
+elif "supabase.co" in DB_HOST:
+    connect_args["sslmode"] = "require"
+
 engine = create_engine(
-    DATABASE_URL, 
+    DATABASE_URL,
     echo=True,
     pool_pre_ping=True,  # Verify connections before using
     pool_size=5,
-    max_overflow=10
+    max_overflow=10,
+    connect_args=connect_args
 )
 
 # Create session factory

@@ -33,13 +33,28 @@ class ColoredFormatter(logging.Formatter):
         'CRITICAL': '🚨',
     }
     
+    def __init__(self, *args, supports_unicode: bool = True, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.supports_unicode = supports_unicode
+
     def format(self, record):
+        if not self.supports_unicode:
+            # Strip non-ASCII to avoid Windows console encoding errors.
+            try:
+                safe_msg = record.getMessage().encode("ascii", "ignore").decode("ascii")
+                record.msg = safe_msg
+                record.args = ()
+            except Exception:
+                record.msg = str(record.msg)
+                record.args = ()
+
         # Add color to level name
         levelname = record.levelname
         if levelname in self.COLORS:
+            icon = self.ICONS.get(levelname, "") if self.supports_unicode else ""
             record.levelname = (
                 f"{self.COLORS[levelname]}{self.BOLD}"
-                f"{self.ICONS.get(levelname, '')} {levelname}{self.RESET}"
+                f"{icon} {levelname}{self.RESET}"
             )
         
         # Add color to module name
@@ -82,9 +97,12 @@ def setup_logger(
             '%(asctime)s | %(levelname)s | %(name)s | %(message)s'
         )
     
+    stream_encoding = getattr(console_handler.stream, "encoding", None) or ""
+    supports_unicode = "utf" in stream_encoding.lower()
     formatter = ColoredFormatter(
         format_string,
-        datefmt='%Y-%m-%d %H:%M:%S'
+        datefmt='%Y-%m-%d %H:%M:%S',
+        supports_unicode=supports_unicode
     )
     console_handler.setFormatter(formatter)
     
