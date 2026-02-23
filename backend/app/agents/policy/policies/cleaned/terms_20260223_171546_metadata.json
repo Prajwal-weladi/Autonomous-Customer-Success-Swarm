@@ -1,0 +1,15 @@
+{
+  "policy_id": "terms_20260223_171546",
+  "policy_domain": "terms",
+  "title": "Flipkart Terms of Use",
+  "source_url": "https://stories.flipkart.com/terms-of-use",
+  "scrape_timestamp": "2026-02-23T17:15:46.052440",
+  "metadata": {
+    "policy_key": "terms",
+    "scrape_date": "2026-02-23T17:15:46.052440",
+    "content_length": 30381,
+    "html_length": 30381
+  },
+  "raw_file": "D:\\projects\\Autonomous-Customer-Success-Swarm\\backend\\app\\agents\\policy\\policies\\raw\\terms_20260223_171546.html",
+  "cleaned_file": "D:\\projects\\Autonomous-Customer-Success-Swarm\\backend\\app\\agents\\policy\\policies\\cleaned\\terms_20260223_171546.txt"
+}

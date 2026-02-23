@@ -1,0 +1,15 @@
+{
+  "policy_id": "privacy_20260223_171546",
+  "policy_domain": "privacy",
+  "title": "Flipkart Privacy Policy",
+  "source_url": "https://stories.flipkart.com/privacy-policy",
+  "scrape_timestamp": "2026-02-23T17:15:46.273634",
+  "metadata": {
+    "policy_key": "privacy",
+    "scrape_date": "2026-02-23T17:15:46.273634",
+    "content_length": 10979,
+    "html_length": 10979
+  },
+  "raw_file": "D:\\projects\\Autonomous-Customer-Success-Swarm\\backend\\app\\agents\\policy\\policies\\raw\\privacy_20260223_171546.html",
+  "cleaned_file": "D:\\projects\\Autonomous-Customer-Success-Swarm\\backend\\app\\agents\\policy\\policies\\cleaned\\privacy_20260223_171546.txt"
+}

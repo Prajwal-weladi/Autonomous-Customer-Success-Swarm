@@ -1,0 +1,15 @@
+{
+  "policy_id": "general_20260223_171546",
+  "policy_domain": "general",
+  "title": "Flipkart Help Centre",
+  "source_url": "https://www.flipkart.com/helpcentre",
+  "scrape_timestamp": "2026-02-23T17:15:46.375705",
+  "metadata": {
+    "policy_key": "help",
+    "scrape_date": "2026-02-23T17:15:46.375705",
+    "content_length": 47,
+    "html_length": 47
+  },
+  "raw_file": "D:\\projects\\Autonomous-Customer-Success-Swarm\\backend\\app\\agents\\policy\\policies\\raw\\general_20260223_171546.html",
+  "cleaned_file": "D:\\projects\\Autonomous-Customer-Success-Swarm\\backend\\app\\agents\\policy\\policies\\cleaned\\general_20260223_171546.txt"
+}

@@ -1,0 +1,15 @@
+{
+  "policy_id": "shipping_20260223_171546",
+  "policy_domain": "shipping",
+  "title": "Flipkart Shipping Policy",
+  "source_url": "https://stories.flipkart.com/flipkart-product-returns-2/",
+  "scrape_timestamp": "2026-02-23T17:15:46.612378",
+  "metadata": {
+    "policy_key": "shipping",
+    "scrape_date": "2026-02-23T17:15:46.612378",
+    "content_length": 5993,
+    "html_length": 5993
+  },
+  "raw_file": "D:\\projects\\Autonomous-Customer-Success-Swarm\\backend\\app\\agents\\policy\\policies\\raw\\shipping_20260223_171546.html",
+  "cleaned_file": "D:\\projects\\Autonomous-Customer-Success-Swarm\\backend\\app\\agents\\policy\\policies\\cleaned\\shipping_20260223_171546.txt"
+}

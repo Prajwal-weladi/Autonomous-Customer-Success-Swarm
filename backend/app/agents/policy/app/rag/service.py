@@ -73,8 +73,8 @@ class RAGService:
             if not force_reload and self.vector_store.load_index():
                 logger.info("Loaded existing FAISS index")
             else:
-                logger.warning("No existing index found or force reload requested")
-                logger.info("Run reindexing to build the index")
+                logger.info("No existing index found or force reload requested - building from chunks...")
+                self._reindex_from_chunks()
             
             # Initialize pipeline with both clients
             self.pipeline = AdvancedRAGPipeline(
@@ -115,6 +115,40 @@ class RAGService:
         )
         
         return QueryResponse(answer=answer)
+    
+    def _reindex_from_chunks(self) -> None:
+        """
+        Build FAISS index from chunks.json file.
+        
+        Called during initialization if no existing index is found.
+        """
+        try:
+            logger.info("Building FAISS index from chunks.json...")
+            
+            # Load chunks from JSON file
+            processor = DocumentProcessor()
+            chunks = processor.load_chunks()
+            
+            if not chunks:
+                logger.warning("No chunks found in chunks.json")
+                return
+            
+            logger.info(f"Loaded {len(chunks)} chunks")
+            
+            # Build the FAISS index
+            self.vector_store.build_index(chunks)
+            
+            # Save the index for future use
+            self.vector_store.save_index()
+            
+            logger.info(f"✅ FAISS index built successfully with {len(chunks)} documents")
+            
+        except FileNotFoundError:
+            logger.error("Chunks file not found")
+            logger.warning("Please run policy scraper first to generate chunks")
+        except Exception as e:
+            logger.error(f"Failed to build index from chunks: {str(e)}")
+            raise
     
     def get_health(self) -> dict:
         """
