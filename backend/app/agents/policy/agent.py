@@ -254,33 +254,41 @@ async def policy_agent(state):
                 "policy_type": "cancel"
             }
             logger.info("✅ POLICY: Cancellation ALLOWED")
+
+    if intent in ["refund", "return", "exchange", "cancel"]:
+        state["entities"]["policy_result"] = policy_result
+        state["current_state"] = "RESOLUTION"
+        return state
         
     elif intent == "order_tracking":
         logger.info("Order tracking - no policy check required")
-        # Tracking doesn't need policy check
-        policy_result = {
+        state["entities"]["policy_result"] = {
             "allowed": True,
-            "reason": "Order tracking information available",
-            "policy_checked": False
+            "reason": "No policy validation required for order tracking",
+            "policy_checked": False,
+            "policy_type": None
         }
-        
-    elif intent in ["complaint", "technical_issue", "general_question"]:
-        logger.info(f"Intent '{intent}' - no policy check required")
-        # These intents don't require policy checks
-        policy_result = {
+        state["current_state"] = "RESOLUTION"
+        return state
+
+    # General/support intents that do not require policy validation
+    if intent in ["complaint", "technical_issue", "general_question"]:
+        logger.info(f"No policy check required for intent '{intent}'")
+        state["entities"]["policy_result"] = {
             "allowed": True,
-            "reason": "No policy check required for this intent",
-            "policy_checked": False
+            "reason": f"No policy validation required for '{intent}'",
+            "policy_checked": False,
+            "policy_type": None
         }
-    else:
-        logger.warning(f"Unknown intent: {intent}")
-    
-    # Store policy result in state
-    state["entities"]["policy_result"] = policy_result
-    
-    # Move to resolution regardless of policy result
-    # Resolution agent will handle the response based on policy
+        state["current_state"] = "RESOLUTION"
+        return state
+
+    # Default: allow resolution to handle any remaining intents safely
+    state["entities"]["policy_result"] = {
+        "allowed": True,
+        "reason": f"No policy validation required for '{intent}'",
+        "policy_checked": False,
+        "policy_type": None
+    }
     state["current_state"] = "RESOLUTION"
-    logger.info("🔄 POLICY: Moving to RESOLUTION state")
-    
     return state

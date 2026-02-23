@@ -23,6 +23,13 @@ except ImportError:
     OLLAMA_AVAILABLE = False
     print("Warning: ollama not available, using rule-based triage only")
 
+    VALID_INTENTS = set(INTENT_RULES.keys()) | {
+        "policy_info",
+        "request_cancellation",
+        "general_question",
+        "unknown",
+    }
+
 
 
 
@@ -144,7 +151,8 @@ def run_triage(message: str, history: list | None = None) -> dict:
 
     # Rule-based fallback if LLM fails or is unavailable
     message_intent = rule_based_intent(message)
-    fallback_intent = message_intent or rule_based_intent(text) or "unknown"
+    rule_intent = message_intent or rule_based_intent(text)
+    fallback_intent = rule_intent or "general_question"
 
     logger.debug(f"Rule-based extraction: intent={fallback_intent}, order_id={order_id}, urgency={urgency}")
 
@@ -220,7 +228,16 @@ def run_triage(message: str, history: list | None = None) -> dict:
             # Validate and fill in missing fields with fallbacks
             result["order_id"] = result.get("order_id") or order_id
             result["urgency"] = result.get("urgency") or urgency
-            result["intent"] = result.get("intent") or fallback_intent
+            raw_intent = result.get("intent") or fallback_intent
+            if raw_intent not in VALID_INTENTS or raw_intent == "unknown":
+                raw_intent = "general_question"
+
+            # If rules classify as general question, do not let LLM force an action intent.
+            if rule_intent == "general_question" and raw_intent != "general_question":
+                raw_intent = "general_question"
+                result["confidence"] = min(result.get("confidence", DEFAULT_CONFIDENCE), RULE_BASED_CONFIDENCE)
+
+            result["intent"] = raw_intent
             result["confidence"] = result.get("confidence", DEFAULT_CONFIDENCE)
             result["user_issue"] = result.get("user_issue") or message
             
