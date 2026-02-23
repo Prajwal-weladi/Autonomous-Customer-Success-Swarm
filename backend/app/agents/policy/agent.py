@@ -32,7 +32,7 @@ def get_policy_information(policy_type: str = None) -> dict:
         },
         "cancel": {
             "title": "Cancellation Policy",
-            "details": "Orders can be cancelled before they ship. Once an order is shipped or delivered, you'll need to request a return or refund instead. Cancellations are processed immediately."
+            "details": "Orders can be cancelled before they deliver. Once an order is delivered, you'll need to request a return or refund instead. Cancellations are processed immediately."
         }
     }
     
@@ -226,19 +226,15 @@ async def policy_agent(state):
         
     elif intent == "cancel":
         logger.info("Checking cancellation policy")
-        # Cancellation policy check - can only cancel if not shipped/delivered
-        status = order_details.get("status") if order_details else None
+
+        # Get safe status
+        status = (order_details.get("status") if order_details else "") or ""
+        status = status.strip()
+    
         logger.debug(f"Order status: {status}")
-        
-        if status in ["Delivered", "Shipped"]:
-            policy_result = {
-                "allowed": False,
-                "reason": f"Order has already been {status.lower()}. Cancellations are only available before shipping.",
-                "policy_checked": True,
-                "policy_type": "cancel"
-            }
-            logger.info(f"❌ POLICY: Cancellation DENIED - Order already {status}")
-        elif status == "Cancelled":
+    
+        # ❌ Already cancelled
+        if status.lower() == "cancelled":
             policy_result = {
                 "allowed": False,
                 "reason": "Order has already been cancelled.",
@@ -246,15 +242,26 @@ async def policy_agent(state):
                 "policy_type": "cancel"
             }
             logger.info("❌ POLICY: Cancellation DENIED - Already cancelled")
+    
+        # ❌ Already delivered
+        elif status.lower() == "delivered":
+            policy_result = {
+                "allowed": False,
+                "reason": "Order has already been delivered. Please request a return instead.",
+                "policy_checked": True,
+                "policy_type": "cancel"
+            }
+            logger.info("❌ POLICY: Cancellation DENIED - Order delivered")
+    
+        # ✅ Allow otherwise
         else:
             policy_result = {
                 "allowed": True,
-                "reason": "Order is eligible for cancellation.",
+                "reason": f"Order is eligible for cancellation (current status: {status}).",
                 "policy_checked": True,
                 "policy_type": "cancel"
             }
             logger.info("✅ POLICY: Cancellation ALLOWED")
-
     if intent in ["refund", "return", "exchange", "cancel"]:
         state["entities"]["policy_result"] = policy_result
         state["current_state"] = "RESOLUTION"

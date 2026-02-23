@@ -1068,6 +1068,33 @@ async def run_pipeline(req: MessageRequest):
                     reason=policy_result.get("reason", ""),
                     policy_checked=True
                 )
+            elif intent == "cancel":
+                # reuse same logic as policy agent
+                status = (order_details.get("status") or "").strip().lower()
+            
+                if status == "cancelled":
+                    policy_output = PolicyOutput(
+                        policy_type="cancel",
+                        allowed=False,
+                        reason="Order has already been cancelled.",
+                        policy_checked=True
+                    )
+            
+                elif status == "delivered":
+                    policy_output = PolicyOutput(
+                        policy_type="cancel",
+                        allowed=False,
+                        reason="Order has already been delivered. Please request a return instead.",
+                        policy_checked=True
+                    )
+            
+                else:
+                    policy_output = PolicyOutput(
+                        policy_type="cancel",
+                        allowed=True,
+                        reason=f"Order is eligible for cancellation (current status: {order_details.get('status')}).",
+                        policy_checked=True
+                    )
             else:
                 # No policy check needed for this intent
                 policy_output = PolicyOutput(
