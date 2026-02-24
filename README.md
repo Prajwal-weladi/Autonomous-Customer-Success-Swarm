@@ -88,8 +88,7 @@ Response to User
 ### Ollama Models
 After installing Ollama, pull the required models:
 ```bash
-ollama pull mistral:instruct
-ollama pull llama3
+ollama pull llama3.2:latest
 ollama pull mxbai-embed-large
 ollama pull qwen2.5-7b-instruct
 ```
