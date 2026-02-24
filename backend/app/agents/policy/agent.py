@@ -4,10 +4,58 @@ from app.agents.database.db_service import check_existing_request
 from app.agents.policy.app.core.policy_evaluator import (
     evaluate_policy_request,
     get_policy_information,
-    _fallback_policy_info
+    _fallback_policy_info,
+    _fetch_policy_from_rag,
+    _format_policy_response
 )
 
 logger = get_logger(__name__)
+
+
+def get_detailed_policy_info(
+    policy_type: str = None,
+    conversation_history: list = None
+) -> dict:
+    """
+    Fetch detailed policy information using advanced RAG pipeline.
+    
+    Single unified function for fetching policy info - used by both API and pipeline handlers.
+    Combines RAG retrieval with structured formatting.
+    
+    Args:
+        policy_type: Type of policy (refund, return, exchange, cancel) or None for general
+        conversation_history: Previous conversation context
+        
+    Returns:
+        Structured dict with policy information including:
+        - policy_type: Policy type
+        - title: Policy title
+        - eligibility: Eligibility window
+        - details: List of key details
+        - processing_time: Processing timeline
+        - message: Formatted user-friendly message
+        - detailed_content: RAG-fetched detailed info (if available)
+        - source: Source of information (rag/static)
+    """
+    logger.debug(f"[POLICY] Fetching info: {policy_type or 'general'}")
+    
+    # Get fallback/base data
+    fallback_data = _fallback_policy_info(policy_type)
+    
+    # If no specific type, return all policies
+    if not policy_type or policy_type == "all":
+        logger.debug(f"[POLICY] Returning all policies (static data)")
+        fallback_data["source"] = "static"
+        return fallback_data
+    
+    # Try to fetch from RAG for detailed information
+    rag_data = _fetch_policy_from_rag(policy_type)
+    
+    # Format response with RAG data if available
+    response = _format_policy_response(policy_type, rag_data, fallback_data)
+    
+    logger.debug(f"[POLICY] Info retrieved")
+    return response
 
 
 def check_refund_policy(order_details: dict) -> dict:

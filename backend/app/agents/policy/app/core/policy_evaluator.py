@@ -49,7 +49,7 @@ def evaluate_policy_request(
         dict with keys: allowed (bool), reason (str), policy_type (str), policy_checked (bool)
     """
     if not order_details:
-        logger.warning("No order details provided for policy evaluation")
+        logger.debug("[POLICY] No order details available for evaluation")
         return {
             "allowed": False,
             "reason": "No order details available for evaluation",
@@ -65,9 +65,9 @@ def evaluate_policy_request(
         try:
             delivery_date = datetime.strptime(delivered_date, "%Y-%m-%d")
             days_since_delivery = (datetime.now() - delivery_date).days
-            logger.debug(f"Days since delivery: {days_since_delivery}")
+            logger.debug(f"[POLICY] Days since delivery: {days_since_delivery}")
         except Exception as e:
-            logger.warning(f"Could not calculate days since delivery: {e}")
+            logger.debug(f"[POLICY] Could not calculate days since delivery")
     
     order_status = order_details.get("status", "Unknown")
     order_id = order_details.get("order_id")
@@ -83,8 +83,8 @@ def evaluate_policy_request(
         order_details=str(order_details)
     )
     
-    logger.info(f"🤖 POLICY AGENT (LLM): Evaluating {intent} request for order {order_id}")
-    logger.debug(f"Evaluation prompt:\n{prompt[:300]}...")
+    logger.debug(f"[POLICY] Evaluating {intent}")
+    pass  # Log removed for cleanliness
     
     # Call LLM client
     llm_client = get_llm_client()
@@ -95,12 +95,10 @@ def evaluate_policy_request(
     evaluation["policy_type"] = intent
     
     if "error" in evaluation:
-        logger.error(f"LLM evaluation error: {evaluation['error']}")
+        logger.error(f"[POLICY] Error: {evaluation['error']}")
     else:
-        logger.info(
-            f"✅ POLICY (LLM): {intent.upper()} {'ALLOWED' if evaluation.get('allowed') else 'DENIED'} - "
-            f"{evaluation.get('reason', 'No reason provided')}"
-        )
+        status = 'ALLOWED' if evaluation.get('allowed') else 'DENIED'
+        logger.debug(f"[POLICY] {intent.upper()} {status}")
     
     return evaluation
 
@@ -119,21 +117,21 @@ def _fetch_policy_from_rag(policy_type: str) -> dict:
         from app.agents.policy.app.rag.service import RAGService
         from app.agents.policy.app.core.models import QueryRequest
         
-        logger.info(f"🔍 Attempting to fetch {policy_type} policy from RAG system...")
+        logger.debug(f"[RAG] Fetching {policy_type}")
         
         rag_service = RAGService.get_instance()
         
         # Initialize RAG if not already done
         if not rag_service._initialized:
-            logger.info("Initializing RAG service...")
+            logger.debug("[RAG] Initializing RAG service...")
             rag_service.initialize()
         
         # Build meaningful queries for each policy type
         query_map = {
-            "refund": f"How can I get a refund? What is the refund policy and process?",
-            "return": f"How do I return an item? What is the return policy?",
-            "exchange": f"Can I exchange an item? What is the exchange policy?",
-            "cancel": f"How do I cancel my order? What is the cancellation policy?"
+            "refund": "How can I get a refund? What is the refund policy and process?",
+            "return": "How do I return an item? What is the return policy?",
+            "exchange": "Can I exchange an item? What is the exchange policy?",
+            "cancel": "How do I cancel my order? What is the cancellation policy?"
         }
         
         query = query_map.get(policy_type, f"Tell me about the {policy_type} policy")
@@ -147,18 +145,18 @@ def _fetch_policy_from_rag(policy_type: str) -> dict:
         response = rag_service.query(request)
         
         if response and response.answer:
-            logger.info(f"✅ Successfully fetched {policy_type} details from RAG")
+            logger.debug(f"[RAG] Retrieved {policy_type}")
             return {
                 "policy_type": policy_type,
                 "rag_content": response.answer,
                 "source": "rag"
             }
         else:
-            logger.warning(f"RAG returned empty response for {policy_type}")
+            logger.debug(f"[RAG] Empty response")
             return None
             
     except Exception as e:
-        logger.warning(f"Failed to fetch from RAG: {str(e)}. Will fall back to other methods.")
+        logger.debug(f"[RAG] Fallback triggered: {type(e).__name__}")
         return None
 
 
@@ -182,7 +180,7 @@ def _format_policy_response(
     source_data = rag_data if rag_data else fallback_data
     
     if not source_data:
-        logger.warning("No policy data available")
+        logger.debug(f"[POLICY] Using fallback data")
         return _fallback_policy_info(policy_type)
     
     # If RAG provided content, use it to enhance the response
@@ -267,17 +265,15 @@ def get_policy_information(policy_type: str = None) -> dict:
         - detailed_content: (Optional) Detailed info from RAG system
         - source: Source of information (rag/fallback)
     """
-    logger.info(f"📚 POLICY AGENT: Fetching detailed policy information for {policy_type or 'general'}")
+    logger.debug(f"[POLICY] Fetching: {policy_type or 'general'}")
     
     # Get fallback static data for structure
     fallback_data = _fallback_policy_info(policy_type)
     
     # If no specific policy type, return all policies with basic info
     if not policy_type or policy_type == "all":
-        logger.info("Returning all policies information")
-        all_policies = fallback_data
-        all_policies["source"] = "static"
-        return all_policies
+        fallback_data["source"] = "static"
+        return fallback_data
     
     # Try to fetch from RAG system for detailed information
     rag_data = _fetch_policy_from_rag(policy_type)
@@ -285,7 +281,6 @@ def get_policy_information(policy_type: str = None) -> dict:
     # Format and return the response (with RAG data if available)
     response = _format_policy_response(policy_type, rag_data, fallback_data)
     
-    logger.info(f"✅ Policy information prepared for {policy_type}")
     return response
 
 
