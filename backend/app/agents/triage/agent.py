@@ -23,12 +23,12 @@ except ImportError:
     OLLAMA_AVAILABLE = False
     print("Warning: ollama not available, using rule-based triage only")
 
-    VALID_INTENTS = set(INTENT_RULES.keys()) | {
-        "policy_info",
-        "request_cancellation",
-        "general_question",
-        "unknown",
-    }
+VALID_INTENTS = set(INTENT_RULES.keys()) | {
+    "policy_info",
+    "request_cancellation",
+    "general_question",
+    "unknown",
+}
 
 
 

@@ -13,6 +13,15 @@ This project implements an intelligent customer success platform that uses multi
 
 The system uses LangGraph for orchestration and Ollama for local LLM inference.
 
+## ✨ Key Features (Latest Updates)
+
+- **LLM-Powered Triage Engine**: Replaces rigid keyword rules with robust local LLM extraction for intent detection. It intrinsically understands general questions, nuances in multi-turn interactions, and manages casual conversation without failing the pipeline.
+- **Context-Aware Memory Storage**: Persistent conversation state tracks message history over multiple turns. Enables agents to answer context-dependent follow-up queries without forcing users to repeat details.
+- **Dynamic Order ID Resolution**: Actively prompts the user for an Order ID if missing, and gracefully resolves ambiguities when a single user has multiple associated orders.
+- **Smart Routing**: Optimizes query handling by discerning isolated policy questions (handled directly by the Policy Agent) from active return/exchange execution requests (needing full Database pipelines).
+- **Clean Session Management**: Both frontend and backend variables automatically reset on page reload or when initiating a new chat, ensuring a secure and clean state every session.
+- **Comprehensive E2E Testing**: Extensive test coverage ensuring accuracy on intent routing, entity extraction, boundary conditions, and end-to-end PDF return label generation.
+
 ## 🏗️ Architecture
 
 ### Multi-Agent System
@@ -79,8 +88,7 @@ Response to User
 ### Ollama Models
 After installing Ollama, pull the required models:
 ```bash
-ollama pull mistral:instruct
-ollama pull llama3
+ollama pull llama3.2:latest
 ollama pull mxbai-embed-large
 ollama pull qwen2.5-7b-instruct
 ```
@@ -230,13 +238,31 @@ npm run preview
 
 ### Backend Tests
 
-The project includes comprehensive test suites:
+The project includes unit tests, integration tests, and full End-to-End accuracy evaluation scripts.
 
-#### Run All Tests
+#### Run Standard Unit/Integration Tests
 ```bash
 cd backend
 pytest tests_new/ -v
 ```
+
+#### Run Accuracy Evaluations (Golden Dataset & E2E)
+We have custom evaluation scripts that test the actual LLM accuracy against a Golden Dataset and run simulated multi-turn conversations against the live API.
+
+**1. Run Triage Agent Accuracy Eval**
+```bash
+cd backend
+python evals/run_evals.py
+```
+*Outputs triage entity extraction and intent accuracy to `evals/eval_results.csv`*
+
+**2. Run Full System E2E Pipeline Eval**
+*(Note: Ensure your uvicorn backend is running in another terminal first!)*
+```bash
+cd backend
+python evals/run_system_evals.py
+```
+*Outputs End-to-End conversation success rates to `evals/e2e_results.csv`. See the full comprehensive report in `evals/evals_accuracy_report.md`.*
 
 #### Run Specific Test Files
 ```bash

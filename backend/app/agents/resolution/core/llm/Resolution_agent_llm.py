@@ -32,7 +32,7 @@ def run_agent_llm(data: ResolutionInput) -> dict:
             "action": "order_tracking",
             "message": (
                 f"📦 Order Update\n\n"
-                f"Your order **#{data.order_id}** is currently **{order_status}**.\n"
+                f"Your order {data.order_id} is currently {order_status}.\n"
                 f"If you need further help, I'm here for you!"
             ),
             "order_id": data.order_id,

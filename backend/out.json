@@ -1,0 +1,6 @@
+﻿{
+    "conversation_id":  "test-123",
+    "reply":  "**Refund Policy**\n\n**Eligibility:** Orders must be in \u0027Delivered\u0027 status within the last 30 days\n**Processing Time:** 5-7 business days\n\n**Details:**\n- Orders must be in \u0027Delivered\u0027 status\n- Refunds go to original payment method\n\nThe refund process is available within 30 days of delivery. Orders are eligible for a 5-7 business day processing time.",
+    "status":  "completed",
+    "intent":  "policy_info"
+}

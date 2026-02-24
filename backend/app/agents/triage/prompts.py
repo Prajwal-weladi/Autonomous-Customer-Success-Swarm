@@ -28,8 +28,9 @@ CRITICAL INTENT RULES:
 - GREETINGS AND CHITCHAT MUST always be classified as intent=general_question with confidence <= 0.80. NEVER classify a greeting as return, refund, cancel, exchange, or any other action intent.
 - SHORT MESSAGES (≤ 3 words) with no clear support keyword should be classified as general_question.
 - If the message contains NO clear support request (no mention of order, product issue, refund, return, cancellation, tracking, or policy), classify it as general_question.
-- INFORMATIONAL QUERIES: If the user is ASKING ABOUT or WANTING TO KNOW about refunds, returns, exchanges, or cancellations (e.g. "I want to know the refund policy", "tell me about return policy", "what are the exchange policies", "explain cancellation rules"), classify as policy_info — NOT as refund/return/exchange/cancel. Those action intents are ONLY for when the user wants to actually DO the action on their order.
-
+- INFORMATIONAL QUERIES: If the user is ASKING ABOUT or WANTING TO KNOW about refunds, returns, exchanges, or cancellations (e.g. "What is your return policy", "I want to know the refund policy", "tell me about return policy", "what are the exchange policies", "explain cancellation rules"), classify as policy_info — NOT as refund/return/exchange/cancel. Those action intents are ONLY for when the user wants to actually DO the action on their order.
+- COMPLAINTS AND BROKEN ITEMS: If the user is expressing anger or mentions an item arriving broken/defective ("angry", "terrible", "worst", "broken", "defective"), classify as complaint unless they explicitly ask for a refund or return.
+- STRICT MATCHING: You MUST output EXACTLY ONE intent string from the list above. Do not make up your own intents.
 Urgency levels:
 low
 normal

@@ -235,8 +235,8 @@ async def handle_message(req: MessageRequest):
                     # Update request for downstream agents
                     req.message = f"{req.message} (Order #{order_id})"
                 elif len(matches) > 1:
-                    logger.debug(f"[ORDER] Ambiguous order specification")
-                    choices = "\n".join([f"- **#{m.order_id}**: {m.product} ({m.status})" for m in matches])
+                    logger.info(f"⚠️ Ambiguous or missing order specification for '{req.message}'")
+                    choices = "\n".join([f"- {m.order_id}: {m.product} ({m.status})" for m in matches])
                     reply = f"I found multiple orders that might match your request:\n\n{choices}\n\nWhich one did you want to resolve?"
                     
                     save_state(req.conversation_id, {
@@ -310,10 +310,12 @@ async def handle_message(req: MessageRequest):
             
             if user_email == "guest@example.com":
                 reply = "I'm sorry, I can only list orders for regular users. Please log in to see your order history."
+                orders = []
             else:
                 orders = fetch_orders_by_email(user_email)
                 if not orders:
                     reply = f"I couldn't find any orders specifically linked to your account ({user_email})."
+                    orders = []
                 else:
                     order_list = "\n".join([f"- **Order #{o.order_id}**: {o.product} ({o.status})" for o in orders])
                     reply = f"Here are the orders I found under your account ({user_email}):\n\n{order_list}\n\nIs there a specific one you need help with?"
@@ -355,7 +357,7 @@ async def handle_message(req: MessageRequest):
             
             success = cancel_existing_request(int(order_id))
             if success:
-                reply = f"✅ Your previous request for Order #{order_id} has been successfully cancelled. The order status has been reverted to 'Delivered'. You can now submit a new request if needed."
+                reply = f"✅ Your previous request for Order {order_id} has been successfully cancelled. The order status has been reverted to 'Delivered'. You can now submit a new request if needed."
             else:
                 reply = f"❌ I couldn't find an active approved request for Order #{order_id} to cancel. Please check the order ID or status."
             
@@ -499,7 +501,7 @@ async def handle_message(req: MessageRequest):
                     new_state["pending_action"] = None
                     save_state(req.conversation_id, new_state)
 
-                    if resolution_result.get("action") in ["refund", "return", "exchange"]:
+                    if resolution_result.get("action") in ["refund", "return", "exchange", "cancel"]:
                         record_approved_request(
                             order_id=pending_order_id,
                             user_email=user_email or "guest@example.com",
@@ -916,7 +918,7 @@ async def run_pipeline(req: MessageRequest):
                 if not orders:
                     res_msg = f"I couldn't find any orders specifically linked to your account ({user_email})."
                 else:
-                    order_list = "\n".join([f"- **Order #{o.order_id}**: {o.product} ({o.status})" for o in orders])
+                    order_list = "\n".join([f"- Order {o.order_id}: {o.product} ({o.status})" for o in orders])
                     res_msg = f"Here are the orders I found under your account ({user_email}):\n\n{order_list}\n\nIs there a specific one you need help with?"
             
             append_to_history(req.conversation_id, "assistant", res_msg, user_email=user_email)
@@ -978,7 +980,7 @@ async def run_pipeline(req: MessageRequest):
                         req.message = f"{req.message} (Order #{triage_output.order_id})"
                         logger.debug(f"[ORDER] Resolved by product")
                     elif len(matches) > 1:
-                        choices = "\n".join([f"- **#{m.order_id}**: {m.product} ({m.status})" for m in matches])
+                        choices = "\n".join([f"- #{m.order_id}: {m.product} ({m.status})" for m in matches])
                         reply = f"I found multiple orders that might match your request:\n\n{choices}\n\nWhich one did you want to resolve?"
 
                         save_state(req.conversation_id, {
@@ -1299,7 +1301,7 @@ async def run_pipeline(req: MessageRequest):
                     # Non-destructive actions proceed immediately
                     resolution_result = run_agent_llm(resolution_input)
                 
-                if resolution_result and resolution_result.get("action") in ["refund", "return", "exchange"]:
+                if resolution_result and resolution_result.get("action") in ["refund", "return", "exchange", "cancel"]:
                     # We check if it was actually approved (not denied by policy)
                     if policy_output.allowed:
                         record_approved_request(
