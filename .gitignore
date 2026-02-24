@@ -39,6 +39,11 @@ coverage.xml
 *.cover
 .hypothesis/
 .tox/
+./evals
+./golden_dataset.json
+./e2e_dataset.csv
+./eval_results.csv
+./e2e_results.csv
 
 # ============================================
 # Node.js / Frontend (React + Vite)

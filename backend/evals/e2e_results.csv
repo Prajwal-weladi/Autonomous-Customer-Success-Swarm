@@ -1,0 +1,13 @@
+description,success,final_bot_reply
+Order Status check with missing user ID - Multi-turn,True,"📦 Order Update
+
+Your order 287899092720 is currently Cancelled.
+If you need further help, I'm here for you!"
+Email input to list orders,True,"Here are the orders I found under your account (prajwalweladi1@gmail.com):
+
+- **Order #287899092720**: Headphones (Cancelled)
+- **Order #295236214521**: Reebok Shorts (Return Processed)
+
+Is there a specific one you need help with?"
+List orders via email and interact with one order,True,I found Order #287899092720: Headphones (status: Cancelled). Are you sure you want to refund this order? Please reply 'Yes' to confirm or 'No' to cancel.
+Direct return request with order ID,True,I found Order #287899092720: Headphones (status: Cancelled). Are you sure you want to return this order? Please reply 'Yes' to confirm or 'No' to cancel.

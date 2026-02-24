@@ -48,7 +48,7 @@ ACTION_TOPIC_WORDS = [
 ]
 
 # LLM Configuration
-LLM_MODEL = "qwen2.5:0.5b"
+LLM_MODEL = "llama3.2:latest"
 LLM_TEMPERATURE = 0.1
 
 # Confidence Thresholds

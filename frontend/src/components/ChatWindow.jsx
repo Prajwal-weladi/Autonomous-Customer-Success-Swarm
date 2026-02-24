@@ -76,7 +76,7 @@ const ChatWindow = ({ messages, onSendMessage, isLoading, handoffStatus }) => {
                     disabled={isLoading || handoffStatus === 'handoff'}
                 />
                 <p className="text-[10px] text-center text-slate-500 mt-4">
-                    Powered by Autonomous Customer Success Swarm • AI agents can make mistakes.
+                    Autonomous Customer Success Swarm
                 </p>
             </div>
         </div>

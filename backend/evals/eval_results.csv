@@ -1,0 +1,11 @@
+query,expected_intent,actual_intent,intent_match,expected_urgency,actual_urgency,urgency_match,expected_order_id,actual_order_id,entity_match
+"Where is my order #ORD-54321, it said it's shipped but I haven't got it!",order_tracking,order_tracking,True,high,low,False,54321,54321,True
+"I want to return my shoes, order number 98765, they are too small.",return,return,True,normal,low,False,98765,98765,True
+Can I exchange the shirt I bought? It's order 11223,exchange,exchange,True,normal,normal,True,11223,11223,True
+What is your return policy for electronics?,policy_info,policy_info,True,normal,low,False,,,True
+Please cancel my recent order 55667 ASAP!!!,cancel,cancel,True,high,high,True,55667,55667,True
+"Hello, how are you doing today?",general_question,general_question,True,normal,low,False,,,True
+I am so angry! My order #99999 arrived completely broken.,complaint,complaint,True,high,high,True,99999,99999,True
+Do you offer international shipping?,policy_info,general_question,False,normal,low,False,,,True
+Can you check the status of my order?,order_tracking,order_tracking,True,normal,normal,True,,,True
+"I need to exchange order #44556, it's urgent!",exchange,exchange,True,high,high,True,44556,44556,True

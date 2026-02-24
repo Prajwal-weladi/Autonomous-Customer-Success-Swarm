@@ -48,7 +48,7 @@ def evaluate_policy_request(
     Returns:
         dict with keys: allowed (bool), reason (str), policy_type (str), policy_checked (bool)
     """
-    if not order_details:
+    if not order_details or order_details.get("status") == "Exchange Processed":
         logger.warning("No order details provided for policy evaluation")
         return {
             "allowed": False,

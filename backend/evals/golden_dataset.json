@@ -1,0 +1,62 @@
+[
+    {
+        "user_query": "Where is my order #ORD-54321, it said it's shipped but I haven't got it!",
+        "expected_intent": "order_tracking",
+        "expected_urgency": "high",
+        "expected_order_id": "54321"
+    },
+    {
+        "user_query": "I want to return my shoes, order number 98765, they are too small.",
+        "expected_intent": "return",
+        "expected_urgency": "normal",
+        "expected_order_id": "98765"
+    },
+    {
+        "user_query": "Can I exchange the shirt I bought? It's order 11223",
+        "expected_intent": "exchange",
+        "expected_urgency": "normal",
+        "expected_order_id": "11223"
+    },
+    {
+        "user_query": "What is your return policy for electronics?",
+        "expected_intent": "policy_info",
+        "expected_urgency": "normal",
+        "expected_order_id": null
+    },
+    {
+        "user_query": "Please cancel my recent order 55667 ASAP!!!",
+        "expected_intent": "cancel",
+        "expected_urgency": "high",
+        "expected_order_id": "55667"
+    },
+    {
+        "user_query": "Hello, how are you doing today?",
+        "expected_intent": "general_question",
+        "expected_urgency": "normal",
+        "expected_order_id": null
+    },
+    {
+        "user_query": "I am so angry! My order #99999 arrived completely broken.",
+        "expected_intent": "complaint",
+        "expected_urgency": "high",
+        "expected_order_id": "99999"
+    },
+    {
+        "user_query": "Do you offer international shipping?",
+        "expected_intent": "policy_info",
+        "expected_urgency": "normal",
+        "expected_order_id": null
+    },
+    {
+        "user_query": "Can you check the status of my order?",
+        "expected_intent": "order_tracking",
+        "expected_urgency": "normal",
+        "expected_order_id": null
+    },
+    {
+        "user_query": "I need to exchange order #44556, it's urgent!",
+        "expected_intent": "exchange",
+        "expected_urgency": "high",
+        "expected_order_id": "44556"
+    }
+]
