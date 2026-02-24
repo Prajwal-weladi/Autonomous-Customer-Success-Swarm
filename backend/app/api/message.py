@@ -15,6 +15,69 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _format_policy_info_response(policy_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Format policy information for user-friendly presentation.
+    
+    Args:
+        policy_data: Raw policy data from get_policy_information
+        
+    Returns:
+        Dict with formatted response data including reply message and structured policy_info
+    """
+    if not policy_data:
+        return {
+            "reply": "Unable to retrieve policy information at this time.",
+            "policy_info": None
+        }
+    
+    policy_type = policy_data.get("policy_type")
+    title = policy_data.get("title", "Policy Information")
+    message = policy_data.get("message", "")
+    eligibility = policy_data.get("eligibility")
+    details = policy_data.get("details", [])
+    processing_time = policy_data.get("processing_time")
+    detailed_content = policy_data.get("detailed_content")
+    
+    # Build a comprehensive reply message
+    reply_parts = [f"📋 **{title}**"]
+    
+    if eligibility:
+        reply_parts.append(f"\n⏰ **Eligibility:** {eligibility}")
+    
+    if details:
+        reply_parts.append("\n**Process & Guidelines:**")
+        for detail in details:
+            reply_parts.append(f"  ✓ {detail}")
+    
+    if processing_time:
+        reply_parts.append(f"\n⏳ **Processing Time:** {processing_time}")
+    
+    if detailed_content:
+        reply_parts.append(f"\n**Additional Details:**\n{detailed_content}")
+    
+    # Add helpful prompt
+    reply_parts.append("\n\n_If you have a specific order you need help with, please provide your Order ID and I can check if this policy applies to your situation._")
+    
+    reply = "\n".join(reply_parts)
+    
+    # Structure the policy info for frontend consumption
+    structured_policy_info = {
+        "policy_type": policy_type,
+        "title": title,
+        "eligibility": eligibility,
+        "details": details,
+        "processing_time": processing_time,
+        "has_detailed_content": bool(detailed_content),
+        "source": policy_data.get("source", "static")
+    }
+    
+    return {
+        "reply": reply,
+        "policy_info": structured_policy_info
+    }
+
+
 router = APIRouter()
 
 
@@ -221,14 +284,23 @@ async def handle_message(req: MessageRequest):
                 policy_type = "cancel"
             
             logger.debug(f"Policy type: {policy_type}")
-            policy_info = get_policy_information(policy_type)
+            policy_data = get_policy_information(policy_type)
             
-            logger.info(f"✅ API: Returning policy information")
+            # Format policy response for user-friendly presentation
+            formatted_response = _format_policy_info_response(policy_data)
+            
+            # Save to conversation history
+            reply = formatted_response.get("reply", "Unable to retrieve policy information.")
+            append_to_history(req.conversation_id, "user", req.message, user_email=user_email)
+            append_to_history(req.conversation_id, "assistant", reply, user_email=user_email)
+            
+            logger.info(f"✅ API: Returning detailed policy information for {policy_type or 'general'}")
             return MessageResponse(
                 conversation_id=req.conversation_id,
-                reply=policy_info["message"],
+                reply=reply,
                 status="completed",
-                intent="policy_info"
+                intent="policy_info",
+                policy_info=formatted_response.get("policy_info")
             )
 
         # ROUTE 1.7: List Orders (Show all orders for the authenticated user)
@@ -746,10 +818,14 @@ async def run_pipeline(req: MessageRequest):
             elif "cancel" in message_lower or "cancellation" in message_lower:
                 policy_type = "cancel"
             
-            policy_info = get_policy_information(policy_type)
+            policy_data = get_policy_information(policy_type)
+            
+            # Format policy response for user-friendly presentation
+            formatted_response = _format_policy_info_response(policy_data)
+            reply_message = formatted_response.get("reply", "Unable to retrieve policy information.")
             
             # Record assistant reply in history and return
-            append_to_history(req.conversation_id, "assistant", policy_info["message"], user_email=user_email)
+            append_to_history(req.conversation_id, "assistant", reply_message, user_email=user_email)
             # Return a simplified pipeline response for policy info
             return PipelineResponse(
                 conversation_id=req.conversation_id,
@@ -768,7 +844,7 @@ async def run_pipeline(req: MessageRequest):
                 ),
                 resolution_output=ResolutionOutput(
                     action="policy_info",
-                    message=policy_info["message"],
+                    message=reply_message,
                     return_label_url=None,
                     refund_amount=None,
                     status="completed",

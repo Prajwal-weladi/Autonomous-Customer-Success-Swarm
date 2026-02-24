@@ -105,60 +105,188 @@ def evaluate_policy_request(
     return evaluation
 
 
+def _fetch_policy_from_rag(policy_type: str) -> dict:
+    """
+    Fetch detailed policy information from RAG system.
+    
+    Args:
+        policy_type: Type of policy (refund, return, exchange, cancel)
+        
+    Returns:
+        dict with RAG-fetched policy details or None if RAG is unavailable
+    """
+    try:
+        from app.agents.policy.app.rag.service import RAGService
+        from app.agents.policy.app.core.models import QueryRequest
+        
+        logger.info(f"🔍 Attempting to fetch {policy_type} policy from RAG system...")
+        
+        rag_service = RAGService.get_instance()
+        
+        # Initialize RAG if not already done
+        if not rag_service._initialized:
+            logger.info("Initializing RAG service...")
+            rag_service.initialize()
+        
+        # Build meaningful queries for each policy type
+        query_map = {
+            "refund": f"How can I get a refund? What is the refund policy and process?",
+            "return": f"How do I return an item? What is the return policy?",
+            "exchange": f"Can I exchange an item? What is the exchange policy?",
+            "cancel": f"How do I cancel my order? What is the cancellation policy?"
+        }
+        
+        query = query_map.get(policy_type, f"Tell me about the {policy_type} policy")
+        
+        request = QueryRequest(
+            query=query,
+            conversation_history=[],
+            filter_domain=policy_type
+        )
+        
+        response = rag_service.query(request)
+        
+        if response and response.answer:
+            logger.info(f"✅ Successfully fetched {policy_type} details from RAG")
+            return {
+                "policy_type": policy_type,
+                "rag_content": response.answer,
+                "source": "rag"
+            }
+        else:
+            logger.warning(f"RAG returned empty response for {policy_type}")
+            return None
+            
+    except Exception as e:
+        logger.warning(f"Failed to fetch from RAG: {str(e)}. Will fall back to other methods.")
+        return None
+
+
+def _format_policy_response(
+    policy_type: str,
+    rag_data: dict = None,
+    fallback_data: dict = None
+) -> dict:
+    """
+    Format policy information into a detailed, structured response.
+    
+    Args:
+        policy_type: Type of policy
+        rag_data: Data fetched from RAG system
+        fallback_data: Fallback static data
+        
+    Returns:
+        Formatted policy response dict
+    """
+    # Use RAG data if available, otherwise fallback
+    source_data = rag_data if rag_data else fallback_data
+    
+    if not source_data:
+        logger.warning("No policy data available")
+        return _fallback_policy_info(policy_type)
+    
+    # If RAG provided content, use it to enhance the response
+    if rag_data and rag_data.get("source") == "rag":
+        rag_content = rag_data.get("rag_content", "")
+        
+        # Structure the response with RAG content
+        policy_info = fallback_data.copy() if fallback_data else {}
+        policy_info["policy_type"] = policy_type
+        policy_info["detailed_content"] = rag_content
+        policy_info["source"] = "rag"
+        
+        # Enhance the message with RAG-derived information
+        policy_info["message"] = _build_enhanced_message(
+            policy_type,
+            policy_info.get("title", ""),
+            rag_content,
+            policy_info.get("eligibility", "")
+        )
+        
+        return policy_info
+    
+    # Return formatted fallback data
+    return source_data
+
+
+def _build_enhanced_message(
+    policy_type: str,
+    title: str,
+    rag_content: str,
+    eligibility: str
+) -> str:
+    """
+    Build an enhanced, user-friendly policy message from available data.
+    
+    Args:
+        policy_type: Type of policy
+        title: Policy title
+        rag_content: Content from RAG system
+        eligibility: Eligibility information
+        
+    Returns:
+        Formatted message string
+    """
+    lines = [f"📋 **{title}**"]
+    
+    if eligibility:
+        lines.append(f"\n⏰ **Eligibility Window:** {eligibility}")
+    
+    # Add RAG content (extract key sentences)
+    if rag_content:
+        lines.append("\n**Key Details:**")
+        # Extract first few sentences from RAG content
+        sentences = rag_content.split(". ")[:3]
+        for sentence in sentences:
+            if sentence.strip():
+                lines.append(f"• {sentence.strip()}.")
+    
+    lines.append("\n\nWould you like more specific details about this policy, or do you have questions about a specific order?")
+    
+    return "\n".join(lines)
+
+
 def get_policy_information(policy_type: str = None) -> dict:
     """
-    Return policy information for informational queries using LLM.
-    Does not require order details - just returns policy rules.
+    Return detailed, structured policy information for informational queries.
+    Uses RAG system to fetch real company policy data, with intelligent fallbacks.
+    
+    Does not require order details - just returns policy rules and processes.
     
     Args:
         policy_type: Type of policy (refund, return, exchange, cancel) or None for general info
         
     Returns:
-        dict with structured policy information including title, eligibility, details, processing_time, and message
+        dict with structured policy information including:
+        - policy_type: Type of policy
+        - title: Policy title
+        - eligibility: Eligibility window
+        - details: List of key details
+        - processing_time: Expected processing time
+        - message: Human-readable formatted message
+        - detailed_content: (Optional) Detailed info from RAG system
+        - source: Source of information (rag/fallback)
     """
-    logger.info(f"📚 POLICY AGENT (LLM): Fetching policy information for {policy_type or 'general'}")
+    logger.info(f"📚 POLICY AGENT: Fetching detailed policy information for {policy_type or 'general'}")
     
-    if policy_type:
-        query = f"Tell me about the {policy_type} policy"
-    else:
-        query = "What are all your customer service policies?"
+    # Get fallback static data for structure
+    fallback_data = _fallback_policy_info(policy_type)
     
-    prompt = POLICY_INFO_PROMPT.format(query=query)
+    # If no specific policy type, return all policies with basic info
+    if not policy_type or policy_type == "all":
+        logger.info("Returning all policies information")
+        all_policies = fallback_data
+        all_policies["source"] = "static"
+        return all_policies
     
-    llm_client = get_llm_client()
+    # Try to fetch from RAG system for detailed information
+    rag_data = _fetch_policy_from_rag(policy_type)
     
-    try:
-        if ollama is None:
-            logger.warning("Ollama not available, using fallback policy information")
-            return _fallback_policy_info(policy_type)
-            
-        response = ollama.chat(
-            model="qwen2.5:0.5b",
-            messages=[{"role": "user", "content": prompt}],
-            options={"temperature": 0.1}
-        )
-        
-        message = response.get("message", {}).get("content", "")
-        
-        # Try to parse JSON response
-        try:
-            # Clean up potential markdown formatting
-            if "```json" in message:
-                message = message.split("```json")[1].split("```")[0].strip()
-            elif "```" in message:
-                message = message.split("```")[1].split("```")[0].strip()
-            
-            policy_data = json.loads(message)
-            policy_data["policy_type"] = policy_type or "all"
-            return policy_data
-        except (json.JSONDecodeError, ValueError) as e:
-            logger.warning(f"Failed to parse policy response as JSON: {e}")
-            # Fallback to rule-based approach
-            return _fallback_policy_info(policy_type)
-    except Exception as e:
-        logger.error(f"Failed to fetch policy information: {e}")
-        # Fallback to rule-based approach
-        return _fallback_policy_info(policy_type)
+    # Format and return the response (with RAG data if available)
+    response = _format_policy_response(policy_type, rag_data, fallback_data)
+    
+    logger.info(f"✅ Policy information prepared for {policy_type}")
+    return response
 
 
 def _fallback_policy_info(policy_type: str = None) -> dict:
