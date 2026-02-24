@@ -15,6 +15,69 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _format_policy_info_response(policy_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Format policy information for user-friendly presentation.
+    
+    Args:
+        policy_data: Raw policy data from get_policy_information
+        
+    Returns:
+        Dict with formatted response data including reply message and structured policy_info
+    """
+    if not policy_data:
+        return {
+            "reply": "Unable to retrieve policy information at this time.",
+            "policy_info": None
+        }
+    
+    policy_type = policy_data.get("policy_type")
+    title = policy_data.get("title", "Policy Information")
+    message = policy_data.get("message", "")
+    eligibility = policy_data.get("eligibility")
+    details = policy_data.get("details", [])
+    processing_time = policy_data.get("processing_time")
+    detailed_content = policy_data.get("detailed_content")
+    
+    # Build a comprehensive reply message
+    reply_parts = [f"📋 **{title}**"]
+    
+    if eligibility:
+        reply_parts.append(f"\n⏰ **Eligibility:** {eligibility}")
+    
+    if details:
+        reply_parts.append("\n**Process & Guidelines:**")
+        for detail in details:
+            reply_parts.append(f"  ✓ {detail}")
+    
+    if processing_time:
+        reply_parts.append(f"\n⏳ **Processing Time:** {processing_time}")
+    
+    if detailed_content:
+        reply_parts.append(f"\n**Additional Details:**\n{detailed_content}")
+    
+    # Add helpful prompt
+    reply_parts.append("\n\n_If you have a specific order you need help with, please provide your Order ID and I can check if this policy applies to your situation._")
+    
+    reply = "\n".join(reply_parts)
+    
+    # Structure the policy info for frontend consumption
+    structured_policy_info = {
+        "policy_type": policy_type,
+        "title": title,
+        "eligibility": eligibility,
+        "details": details,
+        "processing_time": processing_time,
+        "has_detailed_content": bool(detailed_content),
+        "source": policy_data.get("source", "static")
+    }
+    
+    return {
+        "reply": reply,
+        "policy_info": structured_policy_info
+    }
+
+
 router = APIRouter()
 
 
@@ -127,7 +190,7 @@ async def handle_message(req: MessageRequest):
     Returns:
         MessageResponse with the agent's reply and metadata
     """
-    logger.info(f"📨 API /v1/message: Received request | Conversation: {req.conversation_id}")
+    logger.info(f"[API] Received request | Conversation: {req.conversation_id}")
     logger.debug(f"Message: '{req.message[:100]}...'")
     
     try:
@@ -167,7 +230,7 @@ async def handle_message(req: MessageRequest):
                 
                 if len(matches) == 1:
                     resolved_order = matches[0]
-                    logger.info(f"✅ Resolved order automatically: #{resolved_order.order_id}")
+                    logger.debug(f"[ORDER] Auto-resolved: {resolved_order.order_id}")
                     order_id = str(resolved_order.order_id)
                     # Update request for downstream agents
                     req.message = f"{req.message} (Order #{order_id})"
@@ -205,8 +268,8 @@ async def handle_message(req: MessageRequest):
         
         # ROUTE 1: Policy Information Queries
         if intent == "policy_info":
-            logger.info(f"🔀 ROUTE 1: Policy info query detected")
-            from app.agents.policy.agent import get_policy_information
+            logger.debug(f"[ROUTE] Policy info query detected")
+            from app.agents.policy.agent import get_detailed_policy_info
             
             # Determine which policy they're asking about
             message_lower = req.message.lower()
@@ -220,20 +283,29 @@ async def handle_message(req: MessageRequest):
             elif "cancel" in message_lower or "cancellation" in message_lower:
                 policy_type = "cancel"
             
-            logger.debug(f"Policy type: {policy_type}")
-            policy_info = get_policy_information(policy_type)
+            logger.debug(f"[POLICY] Policy type detected: {policy_type}")
+            policy_data = get_detailed_policy_info(policy_type)
             
-            logger.info(f"✅ API: Returning policy information")
+            # Format policy response for user-friendly presentation
+            formatted_response = _format_policy_info_response(policy_data)
+            
+            # Save to conversation history
+            reply = formatted_response.get("reply", "Unable to retrieve policy information.")
+            append_to_history(req.conversation_id, "user", req.message, user_email=user_email)
+            append_to_history(req.conversation_id, "assistant", reply, user_email=user_email)
+            
+            logger.info(f"[RESPONSE] Policy info returned for {policy_type or 'general'}")
             return MessageResponse(
                 conversation_id=req.conversation_id,
-                reply=policy_info["message"],
+                reply=reply,
                 status="completed",
-                intent="policy_info"
+                intent="policy_info",
+                policy_info=formatted_response.get("policy_info")
             )
 
         # ROUTE 1.7: List Orders (Show all orders for the authenticated user)
         if intent == "list_orders":
-            logger.info(f"🔀 ROUTE 1.7: List orders query detected for {user_email}")
+            logger.debug(f"[ROUTE] List orders for {user_email}")
             from app.agents.database.db_service import fetch_orders_by_email
             
             if user_email == "guest@example.com":
@@ -299,7 +371,7 @@ async def handle_message(req: MessageRequest):
         
         # ROUTE 2: Check if awaiting confirmation (for cancellations)
         if previous_state.get("awaiting_confirmation"):
-            logger.info(f"🔀 ROUTE 2: Awaiting confirmation state detected")
+            logger.debug(f"[STATE] Awaiting confirmation")
             message_lower = req.message.lower()
             pending_action = previous_state.get("pending_action") or previous_state.get("intent")
             pending_order_id = previous_state.get("entities", {}).get("order_id")
@@ -643,19 +715,19 @@ async def run_pipeline(req: MessageRequest):
         # Record the incoming user message into history immediately - pass user_email
         append_to_history(req.conversation_id, "user", req.message, user_email=user_email)
         
-        logger.info(f"📂 Loaded previous state for {req.conversation_id}")
+        logger.debug(f"[STATE] Loaded previous state")
         logger.debug(f"Previous entities: {previous_entities}")
         if previous_entities.get("order_id"):
-            logger.info(f"✅ Found previous order_id in state: {previous_entities.get('order_id')}")
+            logger.debug(f"[STATE] Found previous order_id")
         
         # CHECK: If we're awaiting order ID from a previous request
         if previous_state.get("awaiting_order_id"):
-            print(f"\n🔄 AWAITING ORDER ID - Checking if user provided it")
+            logger.debug(f"[STATE] Checking if user provided order ID")
             
             # ✅ FIRST: Check if we already have an order_id saved from earlier in the conversation
             saved_order_id = previous_entities.get("order_id")
             if saved_order_id:
-                logger.info(f"✅ Found saved order_id from earlier in conversation: {saved_order_id}")
+                logger.debug(f"[STATE] Found saved order_id")
                 original_intent = previous_state.get("intent")
                 req.message = f"{original_intent} order {saved_order_id}"
                 previous_state["awaiting_order_id"] = False
@@ -669,7 +741,7 @@ async def run_pipeline(req: MessageRequest):
                 if extracted_order_id:
                     # User provided order ID - reconstruct the original request
                     original_intent = previous_state.get("intent")
-                    print(f"✅ ORDER ID PROVIDED: {extracted_order_id} - Processing {original_intent} request")
+                    logger.debug(f"[STATE] Order ID extracted: {extracted_order_id}")
                     
                     # Update the message to include the intent and order ID
                     req.message = f"{original_intent} order {extracted_order_id}"
@@ -682,7 +754,7 @@ async def run_pipeline(req: MessageRequest):
                     # Continue with normal pipeline processing below
                 else:
                     # User didn't provide order ID - ask again
-                    print(f"⚠️ ORDER ID NOT PROVIDED - Asking again")
+                    logger.debug(f"[STATE] Order ID still not provided, asking again")
                     _reply = "I didn't catch an order ID in your message. Could you please provide your Order ID? It should be a number like 12345."
                     append_to_history(req.conversation_id, "assistant", _reply, user_email=user_email)
                     return PipelineResponse(
@@ -718,7 +790,7 @@ async def run_pipeline(req: MessageRequest):
                     )
 
         # Step 1: TRIAGE - Extract intent, urgency, order_id
-        print(f"\n📋 STEP 1: TRIAGE - Analyzing message: '{req.message}'")
+        logger.debug(f"[TRIAGE] Analyzing message")
         triage_result = run_triage(req.message, history=history)
         
         triage_output = TriageOutput(
@@ -729,12 +801,12 @@ async def run_pipeline(req: MessageRequest):
             confidence=triage_result.get("confidence", 0.0)
         )
         
-        print(f"✅ TRIAGE RESULT: intent={triage_output.intent}, order_id={triage_output.order_id}")
+        logger.info(f"[TRIAGE] intent={triage_output.intent}, order_id={triage_output.order_id}")
         
         # Step 1.1: SPECIAL HANDLING: Policy Information Queries
         if triage_output.intent == "policy_info":
-            print(f"\n🔍 POLICY INFO QUERY DETECTED - Bypassing order pipeline")
-            from app.agents.policy.agent import get_policy_information
+            logger.debug(f"[ROUTE] Policy info query in pipeline")
+            from app.agents.policy.agent import get_detailed_policy_info
             
             # Determine which policy they're asking about
             message_lower = req.message.lower()
@@ -748,10 +820,16 @@ async def run_pipeline(req: MessageRequest):
             elif "cancel" in message_lower or "cancellation" in message_lower:
                 policy_type = "cancel"
             
-            policy_info = get_policy_information(policy_type)
+            policy_data = get_detailed_policy_info(policy_type)
+            
+            # Format policy response for user-friendly presentation
+            formatted_response = _format_policy_info_response(policy_data)
+            reply_message = formatted_response.get("reply", "Unable to retrieve policy information.")
             
             # Record assistant reply in history and return
-            append_to_history(req.conversation_id, "assistant", policy_info["message"], user_email=user_email)
+            append_to_history(req.conversation_id, "assistant", reply_message, user_email=user_email)
+            
+            logger.info(f"[RESPONSE] Pipeline policy info for {policy_type or 'general'}")
             # Return a simplified pipeline response for policy info
             return PipelineResponse(
                 conversation_id=req.conversation_id,
@@ -770,7 +848,7 @@ async def run_pipeline(req: MessageRequest):
                 ),
                 resolution_output=ResolutionOutput(
                     action="policy_info",
-                    message=policy_info["message"],
+                    message=reply_message,
                     return_label_url=None,
                     refund_amount=None,
                     status="completed",
@@ -781,7 +859,7 @@ async def run_pipeline(req: MessageRequest):
         
         # SPECIAL HANDLING: General Conversation / Unknown Intents
         if triage_output.intent in ["general_question", "unknown"]:
-            print(f"\n💬 GENERAL CONVERSATION DETECTED - Providing friendly response")
+            logger.debug(f"[INTENT] General conversation")
             
             # Generate a friendly response for general conversation
             friendly_responses = {
@@ -830,7 +908,7 @@ async def run_pipeline(req: MessageRequest):
 
         # Step 1.4: Check for List Orders
         if triage_output.intent == "list_orders":
-            print(f"\n📋 LIST ORDERS DETECTED for {user_email}")
+            logger.debug(f"[INTENT] List orders for {user_email}")
             from app.agents.database.db_service import fetch_orders_by_email
             
             if user_email == "guest@example.com":
@@ -856,7 +934,7 @@ async def run_pipeline(req: MessageRequest):
 
         # Step 1.5: Check for Request Cancellation
         if triage_output.intent == "request_cancellation":
-            print(f"\n🔄 REQUEST CANCELLATION DETECTED - Processing for order {triage_output.order_id}")
+            logger.debug(f"[INTENT] Request cancellation for order {triage_output.order_id}")
             if triage_output.order_id:
                 try:
                     success = cancel_existing_request(int(triage_output.order_id))
@@ -900,7 +978,7 @@ async def run_pipeline(req: MessageRequest):
                         resolved_order = matches[0]
                         triage_output.order_id = str(resolved_order.order_id)
                         req.message = f"{req.message} (Order #{triage_output.order_id})"
-                        logger.info(f"✅ Resolved order by product: #{triage_output.order_id}")
+                        logger.debug(f"[ORDER] Resolved by product")
                     elif len(matches) > 1:
                         choices = "\n".join([f"- #{m.order_id}: {m.product} ({m.status})" for m in matches])
                         reply = f"I found multiple orders that might match your request:\n\n{choices}\n\nWhich one did you want to resolve?"
@@ -936,7 +1014,7 @@ async def run_pipeline(req: MessageRequest):
         if not triage_output.order_id and _needs_history(req.message):
             prior_order_id = previous_entities.get("order_id")
             if prior_order_id:
-                logger.info(f"🔄 Reusing order_id from previous conversation: {prior_order_id}")
+                logger.debug(f"[ORDER] Reusing from previous conversation")
                 triage_output.order_id = prior_order_id
             else:
                 logger.debug("No previous order_id found in conversation state")
@@ -945,7 +1023,7 @@ async def run_pipeline(req: MessageRequest):
         # Prompt for order ID if still missing
         action_intents_requiring_order = ["order_tracking", "refund", "return", "exchange", "cancel"]
         if triage_output.intent in action_intents_requiring_order and not triage_output.order_id:
-            print(f"🔍 STILL NO ORDER ID - Prompting user")
+            logger.debug(f"[INTENT] No order ID provided yet")
             
             # Save state to track that we're awaiting order ID
             # IMPORTANT: Preserve previous entities so we don't lose order_id from earlier turns
@@ -996,7 +1074,7 @@ async def run_pipeline(req: MessageRequest):
             )
 
         # Step 2: DATABASE - Fetch order details using order_id from triage
-        print(f"\n📊 STEP 2: DATABASE - Fetching order details")
+        logger.debug(f"[DATABASE] Fetching order details")
         database_output = DatabaseOutput(
             order_found=False,
             order_details=None,
@@ -1012,16 +1090,16 @@ async def run_pipeline(req: MessageRequest):
                     error=db_response.get("error")
                 )
                 if database_output.order_found:
-                    print(f"✅ DATABASE RESULT: Order found - {database_output.order_details}")
+                    logger.info(f"[DATABASE] Order found")
                 else:
-                    print(f"⚠️ DATABASE RESULT: {database_output.error}")
+                    logger.debug(f"[DATABASE] {database_output.error}")
             except Exception as db_error:
                 database_output = DatabaseOutput(
                     order_found=False,
                     order_details=None,
                     error=f"Database error: {str(db_error)}"
                 )
-                print(f"❌ DATABASE ERROR: {database_output.error}")
+                logger.info(f"[DATABASE] Error: {database_output.error}")
         else:
             # Fall back to cached order details when available
             cached_details = previous_entities.get("order_details")
@@ -1034,7 +1112,7 @@ async def run_pipeline(req: MessageRequest):
                 print("✅ DATABASE RESULT: Using cached order details")
         
         # Step 3: POLICY - Validate against policies using order_details
-        print(f"\n🔒 STEP 3: POLICY - Validating against policies")
+        logger.debug(f"[POLICY] Validating against policies")
         policy_output = PolicyOutput(
             policy_type=None,
             allowed=False,
@@ -1107,10 +1185,10 @@ async def run_pipeline(req: MessageRequest):
                     policy_checked=False
                 )
             
-            print(f"✅ POLICY RESULT: allowed={policy_output.allowed}, reason={policy_output.reason}")
+            logger.info(f"[POLICY] allowed={policy_output.allowed}")
         
         # Step 4: RESOLUTION - Process the request and generate final action
-        print(f"\n🚀 STEP 4: RESOLUTION - Processing request")
+        logger.debug(f"[RESOLUTION] Processing request")
         resolution_output = ResolutionOutput(
             action="deny",
             message="Unable to process - no valid order or policy check",
@@ -1261,7 +1339,7 @@ async def run_pipeline(req: MessageRequest):
                     reason=resolution_result.get("reason")
                 )
                 
-                print(f"✅ RESOLUTION RESULT: action={resolution_output.action}, message={resolution_output.message}")
+                logger.info(f"[RESOLUTION] action={resolution_output.action}")
                 
             except Exception as res_error:
                 resolution_output = ResolutionOutput(
@@ -1272,7 +1350,7 @@ async def run_pipeline(req: MessageRequest):
                     status=None,
                     reason=str(res_error)
                 )
-                print(f"❌ RESOLUTION ERROR: {resolution_output.reason}")
+                logger.info(f"[RESOLUTION] Error: {resolution_output.reason}")
         
         # Persist conversation context for future turns
         next_order_details = (
@@ -1311,7 +1389,7 @@ async def run_pipeline(req: MessageRequest):
         )
         
     except Exception as e:
-        print(f"❌ PIPELINE ERROR: {str(e)}")
+        logger.error(f"[PIPELINE] Error: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Pipeline error: {str(e)}"
